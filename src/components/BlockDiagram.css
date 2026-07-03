@@ -1,0 +1,237 @@
+/* ============================================================
+   DIAGRAMA DE BLOQUES – Panel del lazo de control
+   ============================================================ */
+
+.block-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 8px 0;
+  overflow-x: auto;
+  min-height: 100px;
+  flex-wrap: nowrap;
+}
+
+/* ── Bloque individual ─────────────────────── */
+.ctrl-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  height: 60px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-light);
+  background: var(--bg-input);
+  padding: 4px 8px;
+  position: relative;
+  transition: all 0.3s ease;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.ctrl-block.active {
+  box-shadow: 0 0 12px currentColor;
+  border-color: currentColor;
+}
+
+.ctrl-block-icon {
+  font-size: 16px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.ctrl-block-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.ctrl-block-value {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 1px;
+}
+
+/* ── Flecha de conexión ─────────────────────── */
+.ctrl-arrow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.ctrl-arrow-line {
+  width: 24px;
+  height: 2px;
+  background: var(--border-light);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Partícula animada en la flecha */
+.ctrl-arrow-particle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: flow-particle 1.5s linear infinite;
+}
+
+@keyframes flow-particle {
+  from { left: -6px; opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  to   { left: 100%; opacity: 0; }
+}
+
+.ctrl-arrow-head {
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--border-light);
+}
+
+/* ── Comparador (círculo sumador) ────────────── */
+.comparator {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--cyan-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--cyan);
+  background: var(--bg-input);
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.comparator.has-error {
+  border-color: var(--red);
+  color: var(--red);
+  box-shadow: 0 0 10px rgba(244,63,94,0.3);
+}
+
+/* ── Flecha de feedback (inferior) ──────────── */
+.feedback-path {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.feedback-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0 6px;
+}
+
+.feedback-line {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, var(--border-light), var(--cyan-dim));
+  max-width: 120px;
+  position: relative;
+  overflow: hidden;
+}
+
+.feedback-line .ctrl-arrow-particle {
+  animation-direction: reverse;
+  animation-duration: 2s;
+}
+
+/* ── Etiqueta de señal sobre la flecha ──────── */
+.signal-label {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+/* ── BLE animación ───────────────────────────── */
+.ble-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.ble-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ble-wave {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 18px;
+}
+
+.ble-wave-bar {
+  width: 3px;
+  border-radius: 1px;
+  transition: all 0.3s ease;
+  animation: ble-wave-anim 1.2s ease-in-out infinite;
+}
+
+.ble-wave-bar:nth-child(1) { animation-delay: 0s;    height: 6px; }
+.ble-wave-bar:nth-child(2) { animation-delay: 0.2s;  height: 10px; }
+.ble-wave-bar:nth-child(3) { animation-delay: 0.4s;  height: 14px; }
+.ble-wave-bar:nth-child(4) { animation-delay: 0.6s;  height: 10px; }
+.ble-wave-bar:nth-child(5) { animation-delay: 0.8s;  height: 6px; }
+
+@keyframes ble-wave-anim {
+  0%, 100% { opacity: 0.3; transform: scaleY(0.6); }
+  50%       { opacity: 1;   transform: scaleY(1); }
+}
+
+.ble-disconnected .ble-wave-bar {
+  animation: none;
+  opacity: 0.15;
+}
+
+/* ── Saturación del actuador ─────────────────── */
+.saturation-indicator {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--red);
+  font-size: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse-alarm 0.6s ease infinite;
+}
