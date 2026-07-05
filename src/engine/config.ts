@@ -1,35 +1,12 @@
 // ============================================================
-// CONFIGURACIÓN POR DEFECTO DE LA SIMULACIÓN
+// CONFIGURACIÓN DE LA SIMULACIÓN
 // ============================================================
-import type { SimConfig } from '../types/simulation';
 import type { PerturbationExplanation } from '../types/simulation';
 
-// ── Configuración: Escenario ÓPTIMO (inicio hiperglucémico → estado estable en ~50 min) ──
-// Kp=0.12  → respuesta proporcional moderada (sin sobreimpulso fuerte)
-// Ki=0.006 → acción integral lenta (elimina error residual en ~25 min)
-// Kd=0.8   → amortiguación efectiva contra el ruido del sensor
-export const DEFAULT_CONFIG: SimConfig = {
-  pid: {
-    kp: 0.12,  // Ganancia proporcional [U/h por mg/dL de error]
-    ki: 0.006, // Ganancia integral [U/h por (mg/dL·min)]
-    kd: 0.8,   // Ganancia derivativa [U/h por (mg/dL/min)]
-  },
-  plant: {
-    subcutaneousTimeConstant: 20,   // 20 min: absorción subcutánea
-    absorptionDelay: 10,             // 10 min: tiempo muerto
-    glucoseSensitivity: 28,          // reducido para mayor efecto visible de insulina
-    glucoseBasalProduction: 0.8,
-    metabolismTimeConstant: 60,
-  },
-  setpoint: 100,
-  initialGlucose: 180,   // 180 mg/dL: inicio hiperglucémico → transitorio visible
-  maxInsulinRate: 8.0,
-  minInsulinRate: 0.0,
-  basalRate: 0.8,      // Tasa basal de fondo [U/h] — infusión mínima continua de la bomba
-  sensorNoiseLevel: 8,  // Guardian 4 MARD ~10.6% → σ ≈ 8 mg/dL
-  sensorUpdateInterval: 2,  // Actualización cada 2 min (más responsive)
-  timeScale: 1,
-};
+// La configuración inicial por defecto (DEFAULT_CONFIG) se ha movido
+// íntegramente al backend (backend/simulation/config.go).
+// El frontend realiza un GET a /config al arrancar para inicializar
+// los valores.
 
 // ── Metadatos de perturbaciones ─────────────────────────────
 export const PERTURBATION_EXPLANATIONS: PerturbationExplanation[] = [

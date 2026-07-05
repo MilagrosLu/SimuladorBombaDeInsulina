@@ -192,22 +192,88 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
 
       <div className="divider" />
 
+      {/* ── Métricas de Desempeño (Control) ── */}
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 4 }}>
+        Desempeño de Control
+      </div>
+      <div className="metrics-grid">
+        <MetricRow
+          label="T. Establ. (Ts)"
+          value={state.metrics.settlingTime !== null ? state.metrics.settlingTime.toFixed(1) : '--'}
+          unit="min"
+        />
+        <MetricRow
+          label="T. Recuperación"
+          value={state.metrics.recoveryTime !== null ? state.metrics.recoveryTime.toFixed(1) : '--'}
+          unit="min"
+        />
+        <MetricRow
+          label="T. desde perturbación"
+          value={state.timeSinceLastDisturbance.toFixed(1)}
+          unit="min"
+        />
+        <MetricRow
+          label="T. continuo en banda"
+          value={state.stableTime.toFixed(1)}
+          unit="min"
+        />
+        <MetricRow
+          label="Sobreimpulso (Mp)"
+          value={state.metrics.overshoot.toFixed(1)}
+          unit="%"
+        />
+        <MetricRow
+          label="Error Máx. Transitorio"
+          value={state.metrics.maxError.toFixed(1)}
+          unit="mg/dL"
+        />
+        <MetricRow
+          label="Error Estacionario"
+          value={state.systemState === 'stable' ? state.metrics.steadyStateError.toFixed(1) : '--'}
+          unit="mg/dL"
+        />
+        <MetricRow
+          label="ITAE"
+          value={state.metrics.itae.toFixed(0)}
+        />
+      </div>
+
+      <div className="divider" />
+
       {/* ── Estado del sistema ── */}
       <div style={{ textAlign: 'center', padding: '6px 0' }}>
-        <span
-          className={`badge ${state.systemState === 'stable' ? 'badge-stable' : 'badge-transient'}`}
-          style={{ fontSize: 11, padding: '6px 16px' }}
-        >
-          <span className="pulse-dot" style={{
-            background: state.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)',
-          }} />
-          {state.systemState === 'stable' ? '✓ ESTADO ESTABLE' : '~ ESTADO TRANSITORIO'}
-        </span>
-        {state.systemState === 'stable' && (
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-            Estable por {state.stableTime.toFixed(0)} min
-          </div>
-        )}
+        {(() => {
+          let stateColor, stateLabel, stateDesc;
+          if (state.systemState === 'stable') {
+            stateColor = 'var(--green)';
+            stateLabel = '🟢 RÉGIMEN PERMANENTE';
+            stateDesc = 'El sistema se ha estabilizado (Error ≤ 5 mg/dL por ≥20 min).';
+          } else if (state.systemState === 'in_band') {
+            stateColor = 'var(--yellow)';
+            stateLabel = '🟡 EN BANDA DE TOLERANCIA';
+            stateDesc = `Transitorio. Estabilizando (${state.stableTime.toFixed(0)} / 20 min).`;
+          } else {
+            stateColor = 'var(--red)';
+            stateLabel = '🔴 FUERA DE BANDA';
+            stateDesc = 'Transitorio. Error absoluto > 5 mg/dL.';
+          }
+          return (
+            <>
+              <div style={{
+                fontSize: 12, fontWeight: 700, padding: '8px 16px',
+                background: `rgba(255,255,255,0.05)`, border: `1px solid ${stateColor}66`,
+                borderRadius: 4, color: stateColor, marginBottom: 4,
+                letterSpacing: '0.05em'
+              }}>
+                {stateLabel}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                {stateDesc}
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

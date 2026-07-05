@@ -52,11 +52,29 @@ export interface SimulationState {
   perturbations: PerturbationEvent[];
 
   // Estado del sistema
-  systemState: 'transient' | 'stable' | 'alarm';
-  stableTime: number;  // cuánto tiempo lleva estable
+  systemState: 'out_of_band' | 'in_band' | 'stable';
+  stableTime: number;  // cuánto tiempo lleva dentro de la banda
+  timeSinceLastDisturbance: number;
+  transientTime: number;
+  lastTransientTime: number;
 
   // Alarmas
   alarms: string[];
+
+  // Métricas de desempeño de control
+  metrics: {
+    settlingTime: number | null;
+    riseTime: number | null;
+    overshoot: number;
+    steadyStateError: number;
+    iae: number;
+    ise: number;
+    itae: number;
+    maxError: number;
+    timeInRange: number;
+    timeOutOfRange: number;
+    recoveryTime: number | null;
+  };
 }
 
 /** Evento de perturbación */

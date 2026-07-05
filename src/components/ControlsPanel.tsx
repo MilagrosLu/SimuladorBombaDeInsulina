@@ -159,9 +159,9 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
         <div style={{ marginTop: 10, padding: 8, background: 'var(--bg-input)', borderRadius: 6,
           border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-secondary)' }}>💡 Valores de referencia:</strong><br />
-          ✅ <strong style={{ color: 'var(--green)' }}>Estable:</strong> Kp=0.15, Ki=0.008, Kd=0.5<br />
-          ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.05, Ki=0.002, Kd=0.1<br />
-          🔴 <strong style={{ color: 'var(--red)' }}>Inestable:</strong> Kp=0.8, Ki=0.04, Kd=0.0
+          ✅ <strong style={{ color: 'var(--green)' }}>Estable:</strong> Kp=0.4, Ki=0.005, Kd=0.5<br />
+          ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.04, Ki=0.003, Kd=0.1<br />
+          🔴 <strong style={{ color: 'var(--red)' }}>Inestable:</strong> Kp=0.8, Ki=0.015, Kd=0.0
         </div>
       </section>
 

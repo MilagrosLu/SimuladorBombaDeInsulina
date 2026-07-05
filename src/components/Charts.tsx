@@ -1,390 +1,344 @@
 // ============================================================
-// GRÁFICO UNIFICADO – 5 paneles apilados con scroll
+// GRÁFICO UNIFICADO (CHART.JS)
 // ============================================================
-// ① Salida del Proceso + Setpoint (dinámico)
-// ② Salida del Sensor (elemento de medición)
-// ③ Señal de Error e(t) = Medición − Setpoint
-// ④ Señales de Perturbación por tipo
-// ⑤ Insulina Administrada (Basal continua + Bolo de corrección)
-// ============================================================
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
-  ComposedChart, LineChart, Line, Area, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
-} from 'recharts';
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  LineController,
+  BarController
+} from 'chart.js';
+import { Chart, Line } from 'react-chartjs-2';
+import annotationPlugin from 'chartjs-plugin-annotation';
 import type { DataPoint } from '../types/simulation';
 
-// ── Tooltip personalizado ─────────────────────────────────────
-const CustomTooltip = ({ active, payload, label }: {
-  active?: boolean;
-  payload?: { color: string; name: string; value: number }[];
-  label?: number;
-}) => {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div style={{
-      background: 'rgba(8,15,30,0.97)',
-      border: '1px solid rgba(100,130,180,0.3)',
-      borderRadius: 8,
-      padding: '8px 12px',
-      fontSize: 11,
-      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-    }}>
-      <div style={{ color: '#4a6080', marginBottom: 5, fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-        t = {(label ?? 0).toFixed(1)} min
-      </div>
-      {payload.map(p => (
-        <div key={p.name} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-          <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{p.name}:</span>
-          <span style={{ fontFamily: 'var(--font-mono)', color: p.color, fontWeight: 700, fontSize: 11 }}>
-            {p.value.toFixed(2)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  LineController,
+  BarController,
+  annotationPlugin
+);
+
+const CHART_H = 120;
+const panelBase: React.CSSProperties = {
+  background: 'rgba(15, 23, 42, 0.4)',
+  borderBottom: '1px solid var(--border)',
+  padding: '8px 12px 12px',
+  position: 'relative'
 };
 
-const axisStyle = {
-  tick: { fill: '#3d5470', fontSize: 9, fontFamily: 'var(--font-mono)' },
-  axisLine: { stroke: '#1a2840' },
-  tickLine: { stroke: '#1a2840' },
-};
-
-// ── Etiqueta de encabezado de cada sub-panel ──────────────────
-function SubLabel({ title, badge, badgeColor, badgeBg }: {
-  title: string;
-  badge: string;
-  badgeColor: string;
-  badgeBg: string;
-}) {
+function SubLabel({ title, badge, badgeColor, badgeBg }: any) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '5px 0 2px 0', flexShrink: 0,
-    }}>
-      <span style={{
-        fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.08em', color: 'var(--text-secondary)',
-      }}>{title}</span>
-      <span style={{
-        fontSize: 9, padding: '1px 7px', borderRadius: 100,
-        fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-        background: badgeBg, color: badgeColor, flexShrink: 0,
-      }}>{badge}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', letterSpacing: 0.5 }}>{title}</div>
+      <div style={{
+        fontSize: 10, fontWeight: 700, padding: '2px 6px',
+        borderRadius: 4, color: badgeColor, background: badgeBg
+      }}>{badge}</div>
     </div>
   );
 }
 
-// Altura del área de gráfico de cada sub-panel
-const CHART_H = 165;
+// ── Opciones Comunes ──────────────────────────────────────────
+const getCommonOptions = (yMin?: number, yMax?: number, hideX = true): any => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false,
+  elements: { point: { radius: 0, hitRadius: 10, hoverRadius: 4 } },
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: {
+      position: 'top',
+      align: 'start',
+      labels: { color: '#a0aec0', boxWidth: 8, font: { size: 10 } }
+    },
+    tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', titleColor: '#38bdf8' },
+  },
+  scales: {
+    x: {
+      type: 'category',
+      display: !hideX,
+      grid: { color: 'rgba(30,45,77,0.5)' },
+      ticks: { color: '#718096', maxTicksLimit: 10 }
+    },
+    y: {
+      type: 'linear',
+      min: yMin,
+      max: yMax,
+      grid: { color: 'rgba(30,45,77,0.5)' },
+      ticks: { color: '#718096', font: { size: 10 } }
+    }
+  }
+});
 
-const panelBase: React.CSSProperties = {
-  background: 'var(--bg-card)',
-  padding: '4px 10px 8px 10px',
-  borderBottom: '1px solid var(--border)',
-  display: 'flex',
-  flexDirection: 'column',
-};
+function lineAnnotation(y: number, color: string, label: string, dash = [4, 4]): any {
+  return {
+    type: 'line',
+    yMin: y, yMax: y,
+    borderColor: color,
+    borderWidth: 1,
+    borderDash: dash,
+    label: {
+      display: true,
+      content: label,
+      position: 'end',
+      backgroundColor: 'transparent',
+      color: color,
+      font: { size: 9, weight: 'normal' }
+    }
+  };
+}
 
 // ============================================================
 // COMPONENTE PRINCIPAL
 // ============================================================
-export function UnifiedChart({ data, setpoint }: { data: DataPoint[]; setpoint: number }) {
+export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBuffered, viewOffset, onViewChange }: any) {
+  
+  const labels = useMemo(() => data.map((p: DataPoint) => p.time.toFixed(1)), [data]);
 
-  // ── Dominio Y para glucosa (mg/dL) ───────────────────────────
-  const glucoseDomain = useMemo((): [number, number] => {
-    if (data.length === 0) return [60, 220];
-    const vals = data.flatMap(p => [p.glucoseReal, p.glucoseMeasured, p.setpoint]);
-    const lo = Math.floor(Math.min(...vals) / 10) * 10;
-    const hi = Math.ceil(Math.max(...vals) / 10) * 10;
-    return [Math.max(40, lo - 10), Math.min(350, hi + 20)];
+  const glucoseDomain = useMemo(() => {
+    if (data.length === 0) return { min: 60, max: 200 };
+    const vals = data.flatMap((p: DataPoint) => [p.glucoseReal, p.glucoseMeasured, p.setpoint]);
+    let lo = Math.floor(Math.min(...vals) / 10) * 10 - 10;
+    let hi = Math.ceil(Math.max(...vals) / 10) * 10 + 10;
+    if (lo > 70) lo = 60;
+    if (hi < 180) hi = 200;
+    return { min: lo, max: hi };
   }, [data]);
 
-  // ── Dominio Y para el error ───────────────────────────────────
-  const errorDomain = useMemo((): [number, number] => {
-    if (data.length === 0) return [-30, 30];
-    const maxAbs = Math.max(...data.map(p => Math.abs(p.error ?? 0)), 10);
-    return [-(Math.ceil(maxAbs / 5) * 5 + 5), Math.ceil(maxAbs / 5) * 5 + 5];
+  const errorDomain = useMemo(() => {
+    if (data.length === 0) return { min: -10, max: 10 };
+    const vals = data.map((p: DataPoint) => p.error);
+    const maxAbs = Math.ceil(Math.max(...vals.map(Math.abs)) / 5) * 5 + 5;
+    return { min: -maxAbs, max: maxAbs };
   }, [data]);
 
-  // ── Dominio Y para perturbaciones ────────────────────────────
-  const perturbDomain = useMemo((): [number, number] => {
-    if (data.length === 0) return [-2, 8];
-    const vals = data.flatMap(p => [
-      p.perturbMeal ?? 0, p.perturbStress ?? 0, p.perturbExercise ?? 0,
-      p.perturbOcclusion ?? 0, p.perturbBLE ?? 0,
+  const perturbDomain = useMemo(() => {
+    if (data.length === 0) return { min: -1, max: 1 };
+    const vals = data.flatMap((p: DataPoint) => [
+      p.perturbMeal || 0, p.perturbStress || 0, p.perturbExercise || 0,
+      p.perturbOcclusion || 0, p.perturbBLE || 0
     ]);
-    return [Math.floor(Math.min(...vals, -0.5)) - 0.5, Math.ceil(Math.max(...vals, 0.5)) + 0.5];
+    const maxAbs = Math.ceil(Math.max(...vals.map(Math.abs)));
+    return { min: -maxAbs - 0.5, max: maxAbs + 0.5 };
   }, [data]);
 
-  // ── Dominio Y para insulina (U/h) ────────────────────────────
-  const insulinDomain = useMemo((): [number, number] => {
-    if (data.length === 0) return [0, 12];
-    const vals = data.flatMap(p => [p.insulinRate ?? 0, p.basalRate ?? 0]);
+  const insulinDomain = useMemo(() => {
+    if (data.length === 0) return { min: 0, max: 12 };
+    const vals = data.flatMap((p: DataPoint) => [p.insulinRate || 0, p.basalRate || 0, p.bolusAmount || 0]);
     const hi = Math.ceil(Math.max(...vals, 2) / 2) * 2 + 1;
-    return [0, hi];
+    return { min: 0, max: hi };
   }, [data]);
 
-  // ── Flags de presencia por tipo de perturbación ───────────────
-  const hasMeal     = data.some(p => (p.perturbMeal ?? 0) !== 0);
-  const hasStress   = data.some(p => (p.perturbStress ?? 0) !== 0);
-  const hasExercise = data.some(p => (p.perturbExercise ?? 0) !== 0);
-  const hasOccl     = data.some(p => (p.perturbOcclusion ?? 0) !== 0);
-  const hasBLE      = data.some(p => (p.perturbBLE ?? 0) !== 0);
-  const hasAny = hasMeal || hasStress || hasExercise || hasOccl || hasBLE;
-
-  // ── Eventos de inicio de bolo para anotaciones ───────────────
-  const bolusEvents = useMemo(() => {
-    const events: { time: number; bolus: number }[] = [];
-    let prevWasBolus = false;
-    for (const p of data) {
-      const isBolus = (p.bolusAmount ?? 0) > 0.15;
-      if (isBolus && !prevWasBolus) {
-        events.push({ time: p.time, bolus: parseFloat((p.bolusAmount ?? 0).toFixed(2)) });
+  // ── PANEL 1: Glucosa ──
+  const data1 = {
+    labels,
+    datasets: [
+      {
+        label: `Setpoint (${setpoint})`,
+        data: data.map((p: DataPoint) => p.setpoint),
+        borderColor: '#00d4ff', // cyan
+        borderWidth: 2,
+        borderDash: [7, 3],
+        stepped: 'before' as const
+      },
+      {
+        label: 'Salida Proceso',
+        data: data.map((p: DataPoint) => p.glucoseReal),
+        borderColor: '#22d3a6', // green
+        borderWidth: 2,
+        tension: 0.4
       }
-      prevWasBolus = isBolus;
-    }
-    return events;
-  }, [data]);
+    ]
+  };
+  const options1 = useMemo(() => {
+    const opt = getCommonOptions(glucoseDomain.min, glucoseDomain.max, true);
+    opt.plugins!.annotation = {
+      annotations: {
+        hipo: lineAnnotation(70, '#7c3aed', 'Hipo 70'),
+        hiper: lineAnnotation(180, '#d97706', 'Hiper 180')
+      }
+    };
+    return opt;
+  }, [glucoseDomain]);
 
+  // ── PANEL 2: Sensor ──
+  const data2 = {
+    labels,
+    datasets: [
+      {
+        label: 'Medición Sensor',
+        data: data.map((p: DataPoint) => p.glucoseMeasured),
+        borderColor: '#00d4ff', // celeste
+        borderWidth: 1.5,
+        borderDash: [5, 2],
+        tension: 0.4
+      }
+    ]
+  };
+  const options2 = useMemo(() => {
+    const opt = getCommonOptions(glucoseDomain.min, glucoseDomain.max, true);
+    opt.plugins!.annotation = {
+      annotations: { sp: lineAnnotation(setpoint, '#00d4ff', 'SP', [6,3]) }
+    };
+    return opt;
+  }, [glucoseDomain, setpoint]);
+
+  // ── PANEL 3: Error ──
+  const data3 = {
+    labels,
+    datasets: [
+      {
+        label: 'Error e(t)',
+        data: data.map((p: DataPoint) => p.error),
+        borderColor: '#f43f5e', // red
+        borderWidth: 2,
+        tension: 0.4
+      }
+    ]
+  };
+  const options3 = useMemo(() => {
+    const opt = getCommonOptions(errorDomain.min, errorDomain.max, true);
+    opt.plugins!.annotation = {
+      annotations: {
+        zero: lineAnnotation(0, '#00d4ff', 'e = 0', []),
+        p5: lineAnnotation(5, '#22d3a6', '+5', [3,3]),
+        m5: lineAnnotation(-5, '#22d3a6', '-5', [3,3])
+      }
+    };
+    return opt;
+  }, [errorDomain]);
+
+  // ── PANEL 4: Perturbaciones ──
+  const { hasMeal, hasStress, hasExercise, hasOccl, hasBLE, hasAny } = useMemo(() => ({
+    hasMeal:    data.some((p: DataPoint) => (p.perturbMeal     || 0) !== 0),
+    hasStress:  data.some((p: DataPoint) => (p.perturbStress   || 0) !== 0),
+    hasExercise:data.some((p: DataPoint) => (p.perturbExercise || 0) !== 0),
+    hasOccl:    data.some((p: DataPoint) => (p.perturbOcclusion || 0) !== 0),
+    hasBLE:     data.some((p: DataPoint) => (p.perturbBLE      || 0) !== 0),
+    hasAny:     data.some((p: DataPoint) => 
+      (p.perturbMeal || 0) !== 0 || (p.perturbStress || 0) !== 0 ||
+      (p.perturbExercise || 0) !== 0 || (p.perturbOcclusion || 0) !== 0 ||
+      (p.perturbBLE || 0) !== 0
+    ),
+  }), [data]);
+
+  const datasets4 = [];
+  if (hasMeal) datasets4.push({ label: 'Comida', data: data.map((p: DataPoint) => p.perturbMeal), borderColor: '#f97316', tension: 0.4 });
+  if (hasStress) datasets4.push({ label: 'Estrés', data: data.map((p: DataPoint) => p.perturbStress), borderColor: '#a855f7', tension: 0.4 });
+  if (hasExercise) datasets4.push({ label: 'Ejercicio', data: data.map((p: DataPoint) => p.perturbExercise), borderColor: '#84cc16', tension: 0.4 });
+  if (hasOccl) datasets4.push({ label: 'Oclusión', data: data.map((p: DataPoint) => p.perturbOcclusion), borderColor: '#ef4444', stepped: 'before' as const });
+  if (hasBLE) datasets4.push({ label: 'BLE', data: data.map((p: DataPoint) => p.perturbBLE), borderColor: '#6366f1', stepped: 'before' as const });
+
+  const data4 = { labels, datasets: datasets4 };
+  const options4 = useMemo(() => {
+    const opt = getCommonOptions(perturbDomain.min, perturbDomain.max, true);
+    opt.plugins!.annotation = {
+      annotations: {
+        zero: lineAnnotation(0, 'rgba(100,130,180,0.4)', !hasAny ? 'Sin perturbaciones' : '', [])
+      }
+    };
+    return opt;
+  }, [perturbDomain, hasAny]);
+
+  // ── PANEL 5: Insulina ──
+  const data5 = {
+    labels,
+    datasets: [
+      {
+        type: 'bar' as const,
+        label: 'Bolo',
+        data: data.map((p: DataPoint) => p.bolusAmount || 0),
+        backgroundColor: 'rgba(251,146,60,0.55)',
+        barThickness: 5
+      },
+      {
+        type: 'line' as const,
+        label: 'Basal',
+        data: data.map((p: DataPoint) => p.basalRate || 0),
+        borderColor: '#0891b2',
+        borderWidth: 1.5,
+        backgroundColor: 'rgba(8,145,178,0.18)',
+        fill: true,
+        stepped: 'before' as const
+      },
+      {
+        type: 'line' as const,
+        label: 'Total (Basal+Bolo)',
+        data: data.map((p: DataPoint) => p.insulinRate || 0),
+        borderColor: '#22d3ee',
+        borderWidth: 2,
+        stepped: 'before' as const
+      }
+    ]
+  };
+  const options5 = getCommonOptions(insulinDomain.min, insulinDomain.max, false);
+
+  // ── UI ──
   return (
     <div>
-
-      {/* ━━━━━ ① SALIDA DEL PROCESO + SETPOINT ━━━━━ */}
       <div style={panelBase}>
-        <SubLabel
-          title="① Salida del Proceso"
-          badge="mg/dL"
-          badgeColor="var(--green)"
-          badgeBg="rgba(34,211,166,0.12)"
-        />
-        <div style={{ height: CHART_H }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 4, right: 56, left: -8, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(30,45,77,0.8)" strokeDasharray="3 3" />
-              <XAxis dataKey="time" {...axisStyle} hide />
-              <YAxis {...axisStyle} domain={glucoseDomain} unit=" mg" width={50} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 2 }} />
-              <ReferenceLine y={70}  stroke="#7c3aed" strokeDasharray="4 2" strokeWidth={1}
-                label={{ value: 'Hipo 70',   position: 'right', fill: '#7c3aed', fontSize: 8 }} />
-              <ReferenceLine y={180} stroke="#d97706" strokeDasharray="4 2" strokeWidth={1}
-                label={{ value: 'Hiper 180', position: 'right', fill: '#d97706', fontSize: 8 }} />
-              {/* Setpoint como serie de datos → se desplaza si cambia */}
-              <Line type="stepAfter" dataKey="setpoint"
-                stroke="var(--cyan)" strokeWidth={2} strokeDasharray="7 3" dot={false}
-                name={`Setpoint (${setpoint} mg/dL)`} isAnimationActive={false} />
-              <Line type="monotone" dataKey="glucoseReal"
-                stroke="var(--green)" strokeWidth={2} dot={false}
-                name="Sal. Proceso (glucosa real)" isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <SubLabel title="① Salida del Proceso" badge="mg/dL" badgeColor="var(--green)" badgeBg="rgba(34,211,166,0.12)" />
+        <div style={{ height: CHART_H }}><Line data={data1} options={options1} /></div>
       </div>
 
-      {/* ━━━━━ ② SALIDA DEL SENSOR ━━━━━ */}
       <div style={panelBase}>
-        <SubLabel
-          title="② Salida del Sensor  (Guardian 4 – σ≈8 mg/dL)"
-          badge="mg/dL"
-          badgeColor="var(--blue)"
-          badgeBg="rgba(59,130,246,0.12)"
-        />
-        <div style={{ height: CHART_H }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 4, right: 56, left: -8, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(30,45,77,0.8)" strokeDasharray="3 3" />
-              <XAxis dataKey="time" {...axisStyle} hide />
-              <YAxis {...axisStyle} domain={glucoseDomain} unit=" mg" width={50} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 2 }} />
-              <ReferenceLine y={setpoint} stroke="var(--cyan)" strokeDasharray="6 3" strokeWidth={1.5}
-                label={{ value: 'SP', position: 'right', fill: 'var(--cyan)', fontSize: 8 }} />
-              <Line type="monotone" dataKey="glucoseMeasured"
-                stroke="var(--blue)" strokeWidth={1.5} dot={false} strokeDasharray="5 2"
-                name="Sal. Sensor (medición)" isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <SubLabel title="② Salida del Sensor" badge="mg/dL" badgeColor="var(--blue)" badgeBg="rgba(59,130,246,0.12)" />
+        <div style={{ height: CHART_H }}><Line data={data2} options={options2} /></div>
       </div>
 
-      {/* ━━━━━ ③ SEÑAL DE ERROR e(t) ━━━━━ */}
       <div style={panelBase}>
-        <SubLabel
-          title="③ Error  e(t) = Medición − Setpoint"
-          badge="e(t)"
-          badgeColor="var(--red)"
-          badgeBg="rgba(244,63,94,0.12)"
-        />
-        <div style={{ height: CHART_H }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 4, right: 56, left: -8, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(30,45,77,0.8)" strokeDasharray="3 3" />
-              <XAxis dataKey="time" {...axisStyle} hide />
-              <YAxis {...axisStyle} domain={errorDomain} unit=" mg" width={50} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 2 }} />
-              <ReferenceLine y={0}  stroke="var(--cyan)" strokeWidth={1.5}
-                label={{ value: 'e = 0', position: 'right', fill: 'var(--cyan)', fontSize: 8 }} />
-              <ReferenceLine y={8}  stroke="var(--green)" strokeDasharray="3 3" strokeWidth={1}
-                label={{ value: '+8', position: 'right', fill: 'var(--green)', fontSize: 7 }} />
-              <ReferenceLine y={-8} stroke="var(--green)" strokeDasharray="3 3" strokeWidth={1}
-                label={{ value: '-8', position: 'right', fill: 'var(--green)', fontSize: 7 }} />
-              <Line type="monotone" dataKey="error"
-                stroke="var(--red)" strokeWidth={2} dot={false}
-                name="Error e(t)" isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <SubLabel title="③ Error e(t)" badge="e(t)" badgeColor="var(--red)" badgeBg="rgba(244,63,94,0.12)" />
+        <div style={{ height: CHART_H }}><Line data={data3} options={options3} /></div>
       </div>
 
-      {/* ━━━━━ ④ SEÑALES DE PERTURBACIÓN ━━━━━ */}
       <div style={panelBase}>
-        <SubLabel
-          title="④ Señal de Perturbación"
-          badge="mg/dL·min⁻¹"
-          badgeColor="var(--yellow)"
-          badgeBg="rgba(251,191,36,0.12)"
-        />
-        <div style={{ height: CHART_H }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 4, right: 56, left: -8, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(30,45,77,0.8)" strokeDasharray="3 3" />
-              <XAxis dataKey="time" {...axisStyle} hide />
-              <YAxis {...axisStyle} domain={perturbDomain} width={50} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 2 }} />
-              <ReferenceLine y={0} stroke="rgba(100,130,180,0.4)" strokeWidth={1} />
-              {!hasAny && (
-                <ReferenceLine y={0}
-                  label={{ value: 'Sin perturbaciones activas', position: 'insideTopLeft', fill: '#4a6080', fontSize: 10 }} />
-              )}
-              {hasMeal && (
-                <Line type="monotone" dataKey="perturbMeal"
-                  stroke="#f97316" strokeWidth={2} dot={false}
-                  name="Comida (D_meal)" isAnimationActive={false} />
-              )}
-              {hasStress && (
-                <Line type="monotone" dataKey="perturbStress"
-                  stroke="#a855f7" strokeWidth={2} dot={false}
-                  name="Estrés (D_stress)" isAnimationActive={false} />
-              )}
-              {hasExercise && (
-                <Line type="monotone" dataKey="perturbExercise"
-                  stroke="#84cc16" strokeWidth={2} dot={false}
-                  name="Ejercicio (D_exercise)" isAnimationActive={false} />
-              )}
-              {hasOccl && (
-                <Line type="stepAfter" dataKey="perturbOcclusion"
-                  stroke="#ef4444" strokeWidth={2} dot={false}
-                  name="Oclusión cánula" isAnimationActive={false} />
-              )}
-              {hasBLE && (
-                <Line type="stepAfter" dataKey="perturbBLE"
-                  stroke="#6366f1" strokeWidth={2} dot={false}
-                  name="Interferencia BLE" isAnimationActive={false} />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <SubLabel title="④ Señales de Perturbación" badge="mg/dL·min⁻¹" badgeColor="var(--yellow)" badgeBg="rgba(251,191,36,0.12)" />
+        <div style={{ height: CHART_H }}><Line data={data4} options={options4} /></div>
       </div>
 
-      {/* ━━━━━ ⑤ INSULINA ADMINISTRADA (Basal + Bolo) ━━━━━ */}
       <div style={{ ...panelBase, borderBottom: 'none' }}>
-        <SubLabel
-          title="⑤ Insulina Administrada"
-          badge="U/h"
-          badgeColor="#22d3ee"
-          badgeBg="rgba(34,211,238,0.10)"
-        />
-        <div style={{ height: CHART_H + 30 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={data.map(p => ({
-                ...p,
-                basalRate:   p.basalRate   ?? 0,
-                bolusAmount: p.bolusAmount ?? 0,
-                insulinRate: p.insulinRate ?? 0,
-              }))}
-              margin={{ top: 4, right: 56, left: -8, bottom: 18 }}
-            >
-              <CartesianGrid stroke="rgba(30,45,77,0.8)" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="time"
-                {...axisStyle}
-                label={{ value: 'tiempo (min)', position: 'insideBottomRight', offset: -4, fill: '#3d5470', fontSize: 9 }}
-              />
-              <YAxis {...axisStyle} domain={insulinDomain} unit=" U/h" width={55} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 2 }} />
-
-              {/* Área rellena: tasa basal continua de fondo */}
-              <Area
-                type="stepAfter"
-                dataKey="basalRate"
-                stroke="#0891b2"
-                strokeWidth={1.5}
-                fill="rgba(8,145,178,0.18)"
-                dot={false}
-                name="Tasa Basal"
-                isAnimationActive={false}
-              />
-
-              {/* Barras: bolo de corrección (por encima del basal) */}
-              <Bar
-                dataKey="bolusAmount"
-                fill="rgba(251,146,60,0.55)"
-                stroke="#f97316"
-                strokeWidth={0}
-                name="Bolo Corrección"
-                isAnimationActive={false}
-                maxBarSize={5}
-              />
-
-              {/* Línea: tasa total administrada = basal + bolo */}
-              <Line
-                type="stepAfter"
-                dataKey="insulinRate"
-                stroke="#22d3ee"
-                strokeWidth={2}
-                dot={false}
-                name="Total (Basal + Bolo)"
-                isAnimationActive={false}
-              />
-
-              {/* Marcas verticales con valor al inicio de cada bolo */}
-              {bolusEvents.map(ev => (
-                <ReferenceLine
-                  key={ev.time}
-                  x={ev.time}
-                  stroke="rgba(251,146,60,0.45)"
-                  strokeDasharray="3 2"
-                  strokeWidth={1}
-                  label={{
-                    value: `${ev.bolus.toFixed(1)} U/h`,
-                    position: 'top',
-                    fill: '#f97316',
-                    fontSize: 8,
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                />
-              ))}
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        <SubLabel title="⑤ Insulina Administrada" badge="U/h" badgeColor="#22d3ee" badgeBg="rgba(34,211,238,0.10)" />
+        <div style={{ height: CHART_H + 30 }}><Chart type="line" data={data5} options={options5} /></div>
       </div>
 
+      {/* Navegación manual de scroll al pasado */}
+      <div style={{ padding: '8px 12px', background: 'rgba(15,23,42,0.6)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>Navegar historial (Backend):</span>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0, totalBuffered - 300)}
+          value={viewOffset}
+          onChange={(e) => onViewChange?.(parseInt(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: 11, color: '#94a3b8', width: 80, textAlign: 'right' }}>
+          Offset: {viewOffset} pts
+        </span>
+      </div>
     </div>
   );
-}
+});
 
-// ── Exportaciones legacy (compatibilidad) ─────────────────────
-export function GlucoseChart({ data, setpoint }: { data: DataPoint[]; setpoint: number }) {
-  return <UnifiedChart data={data} setpoint={setpoint} />;
-}
+// Legacy exports
+export function GlucoseChart({ data, setpoint }: { data: DataPoint[]; setpoint: number }) { return <UnifiedChart data={data} setpoint={setpoint} />; }
 export function ErrorChart(_: { data: DataPoint[] }) { return <></>; }
 export function ControlEffortChart(_: { data: DataPoint[] }) { return <></>; }
 export function PIDTermsChart(_: { data: DataPoint[] }) { return <></>; }
