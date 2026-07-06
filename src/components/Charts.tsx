@@ -108,8 +108,8 @@ function lineAnnotation(y: number, color: string, label: string, dash = [4, 4]):
 // ============================================================
 // COMPONENTE PRINCIPAL
 // ============================================================
-export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBuffered, viewOffset, onViewChange }: any) {
-  
+export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBuffered, viewOffset, onViewChange, bolusEvents }: any) {
+  const bolusList: { time: number; amount: number }[] = bolusEvents || [];
   const labels = useMemo(() => data.map((p: DataPoint) => p.time.toFixed(1)), [data]);
 
   const glucoseDomain = useMemo(() => {
@@ -288,7 +288,32 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       }
     ]
   };
-  const options5 = getCommonOptions(insulinDomain.min, insulinDomain.max, false);
+  const options5 = useMemo(() => {
+    const opt = getCommonOptions(insulinDomain.min, insulinDomain.max, false);
+    // Anotaciones de bolos: una línea vertical naranja por cada evento
+    const bolusAnnotations: Record<string, any> = {};
+    bolusList.forEach((b, i) => {
+      bolusAnnotations[`bolo_${i}`] = {
+        type: 'line',
+        xMin: b.time.toFixed(1),
+        xMax: b.time.toFixed(1),
+        borderColor: '#fb923c',
+        borderWidth: 3,
+        borderDash: [],
+        label: {
+          display: true,
+          content: `Bolo ${b.amount.toFixed(1)}U`,
+          position: 'start',
+          backgroundColor: 'rgba(251,146,60,0.85)',
+          color: '#fff',
+          font: { size: 10, weight: 'bold' as const },
+          padding: 3,
+        },
+      };
+    });
+    opt.plugins!.annotation = { annotations: bolusAnnotations };
+    return opt;
+  }, [insulinDomain, bolusList]);
 
   // ── UI ──
   return (

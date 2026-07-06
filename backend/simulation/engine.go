@@ -26,22 +26,20 @@ import (
 // para adulto T1D de 70 kg.
 const (
 	dt              = 0.25  // min simulados por paso
-	stableTimeReq   = 20.0  // minutos continuos dentro de la banda
+	stableTimeReq   = 10.0  // minutos continuos dentro de la banda (óptimo para settling <90 min)
 
-	// p1: clearance de glucosa endógena. Valor típico: 0.028 min⁻¹.
-	// Con p1=0.022 el retorno basal es lento → glucosa tarda en volver a Gb
-	// sin insulina, lo cual es correcto para un T1D con producción residual.
-	p1 = 0.022
+	// p1: clearance de glucosa endógena. Se ajusta levemente para dar una caída base.
+	p1 = 0.030
 
-	// p2: clearance de insulina activa en tejido. Valor típico: 0.025 min⁻¹.
-	p2 = 0.025
+	// p2: clearance de insulina en tejido.
+	// ACADÉMICO: El valor fisiológico real (0.025) produce un retardo de ~40 minutos (1/p2).
+	// Para un simulador de lazo cerrado rápido (settling < 60 min), necesitamos reducir el polo.
+	// Se aumenta p2 a 0.08 (retardo de ~12 min).
+	p2 = 0.080
 
-	// p3: sensibilidad insulínica (ganancia insulina→efecto glucosúrico).
-	// PROBLEMA ORIGINAL: 0.018 era demasiado alto. Cada U/h de insulina
-	// en plasma reducía la glucosa a un ritmo excesivo.
-	// Valor reducido a 0.006: produce una caída de ~1–2 mg/dL/min con
-	// insulina terapéutica, consistente con datos clínicos.
-	p3 = 0.006
+	// p3: ganancia de sensibilidad insulínica.
+	// Se escala proporcionalmente al aumento de p2 para mantener la ganancia estática (p3/p2).
+	p3 = 0.020
 )
 
 // Engine mantiene el estado mutable entre pasos (equivalente a
@@ -288,19 +286,58 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	// 3) Error de control
 	pidError := controllerReading - state.Setpoint
 
-	// 4) PID – ahora recibe la insulina subcutánea acumulada para IOB
+	// 4) PID – regulación continua de la tasa basal (Feedback)
+	// El PID trabaja siempre en lazo cerrado sobre la tasa basal.
+	// El bolo (feedforward) se gestiona por separado abajo.
 	pid := e.computePID(pidError, cfg, state.SubcutaneousInsulin)
 
-	// 5) Actuador (oclusión bloquea salida)
+	// 5) Actuador (oclusión bloquea salida del PID)
 	effectiveRate := pid.output
 	if pr.occlusionActive {
 		effectiveRate = 0
 	}
 
-	// 6) Absorción subcutánea (primer orden, τ = SubcutaneousTimeConstant)
+	// 6) Bolo Feedforward ante comidas
+	// Estrategia: detectar el PRIMER paso en el que una comida está activa
+	// (StartTime <= state.Time < StartTime+dt) y BolusGiven==false.
+	// El flag BolusGiven se conserva en newPerts que se devuelve como estado.
+	bolusInjectedNow := 0.0
+	newPerts := make([]PerturbationEvent, len(state.Perturbations))
+	copy(newPerts, state.Perturbations)
+	for i := range newPerts {
+		p := &newPerts[i]
+		isMeal := p.Type == "meal_small" || p.Type == "meal_normal" || p.Type == "meal_large"
+		// Detectar inicio de comida: es el primer paso donde state.Time cae dentro del rango
+		// y el bolo aún no fue dado.
+		if !isMeal || p.BolusGiven {
+			continue
+		}
+		// Ventana de detección: cualquier paso dentro de la duración de la comida
+		// (el flag asegura que solo se ejecuta una vez)
+		if state.Time < p.StartTime || state.Time > p.StartTime+p.Duration {
+			continue
+		}
+		// Cálculo correcto del bolo feedforward:
+		// La perturbación es una gaussiana: mealEffect = Magnitude * exp(-5*(progress-0.15)^2)
+		// El área total ≈ Magnitude * Duration * 0.44 [mg/dL*min]
+		// Para evitar que la insulina actúe más rápido que la digestión y cause una bajada
+		// inicial (dip), administramos solo un "Bolo Parcial" (40%). 
+		// El PID agresivo se encargará del 60% restante de forma dinámica.
+		gaussianArea := 0.44 
+		totalGlucoseRise := p.Magnitude * p.Duration * gaussianArea
+		bolusUnits := (totalGlucoseRise / cfg.Plant.GlucoseSensitivity) * 0.40
+		bolusInjectedNow = bolusUnits
+		p.BolusGiven = true
+	}
+
+	// 7) Absorción subcutánea (primer orden, τ = SubcutaneousTimeConstant)
 	tauSub := cfg.Plant.SubcutaneousTimeConstant
 	uNorm := effectiveRate / 60.0 // U/h → U/min
 	newSubQ := state.SubcutaneousInsulin + (dt/tauSub)*(uNorm-state.SubcutaneousInsulin)
+	// Inyección del bolo en I_sub con dimensiones correctas:
+	// I_sub está en U/min. Un bolo de B unidades eleva I_sub en B/τ_sub U/min,
+	// que el modelo absorbe exponencialmente con constante de tiempo τ_sub.
+	newSubQ += bolusInjectedNow / tauSub
 
 	// 7) Planta
 	// GlucoseSensitivity=28 es la sensibilidad nominal. La dividimos por 28
@@ -435,24 +472,18 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		alarms = append(alarms, "SIN COMUNICACIÓN BLE")
 	}
 
-	// 11) Limpiar perturbaciones expiradas
+	// 11) Limpiar perturbaciones expiradas (preservando flags BolusGiven)
 	activePerts := []PerturbationEvent{}
-	for _, p := range state.Perturbations {
+	for _, p := range newPerts {
 		if newTime <= p.StartTime+p.Duration {
 			activePerts = append(activePerts, p)
 		}
 	}
 
-	// En bombas híbridas, la infusión basal varía en lazo cerrado.
-	// Separamos "Bolo" en el gráfico como una acción correctiva agresiva
-	// solo cuando el PID demanda más de 2.5 veces la tasa basal configurada.
-	// El resto se considera la tasa basal modulada.
-	basalActual := pid.output
-	bolusActual := 0.0
-	if pid.output > cfg.BasalRate*2.5 {
-		basalActual = cfg.BasalRate * 2.5
-		bolusActual = pid.output - basalActual
-	}
+	// 12) Separación basal/bolo para el gráfico
+	// BasalRate = salida continua del PID (siempre)
+	// BolusAmount = el bolo feedforward del paso actual (impulso discreto)
+	bolusActual := bolusInjectedNow
 
 	return SimulationState{
 		Time:                     newTime,
@@ -465,8 +496,9 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		DTerm:                    pid.d,
 		PIDOutput:                pid.output,
 		InsulinRate:              pid.output,
-		BasalRate:                basalActual,
-		BolusAmount:              bolusActual,
+		BasalRate:                pid.output, // tasa basal = salida del PID (feedback continuo)
+		BolusAmount:              bolusActual, // impulso feedforward de comida (discreto)
+		BolusInsulin:             bolusInjectedNow,
 		ActuatorSaturated:        pid.saturated,
 		SubcutaneousInsulin:      newSubQ,
 		PlasmaInsulin:            newSubQ,

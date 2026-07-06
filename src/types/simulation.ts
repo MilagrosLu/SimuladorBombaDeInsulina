@@ -29,7 +29,8 @@ export interface SimulationState {
   // Actuador
   insulinRate: number;   // Tasa de infusión (U/h)
   basalRate: number;     // Tasa basal (U/h)
-  bolusAmount: number;   // Bolo automático (U)
+  bolusAmount: number;   // Bolo feedforward (U) – impulso ante comidas
+  bolusInsulin: number;  // Cantidad del bolo inyectado en el paso actual (U)
   actuatorSaturated: boolean;
 
   // Planta – estados internos
@@ -84,6 +85,7 @@ export interface PerturbationEvent {
   startTime: number;
   duration: number;       // minutos
   description: string;
+  bolusGiven?: boolean;   // ya se aplicó el bolo feedforward
 }
 
 export type PerturbationType =

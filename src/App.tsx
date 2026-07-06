@@ -7,6 +7,8 @@ import './App.css';
 import type { SimulationState, SimConfig, DataPoint, PerturbationType } from './types/simulation';
 import { PERTURBATION_EXPLANATIONS } from './engine/config';
 
+export interface BolusEvent { time: number; amount: number; }
+
 import { Header } from './components/Header';
 import { BlockDiagram } from './components/BlockDiagram';
 import { MetricsPanel } from './components/MetricsPanel';
@@ -47,7 +49,7 @@ export default function App() {
   const [simState, setSimState] = useState<SimulationState>({
     time: 0, setpoint: 100, glucoseReal: 180, glucoseMeasured: 180,
     error: 80, pTerm: 0, iTerm: 0, dTerm: 0, pidOutput: 0,
-    insulinRate: 0, basalRate: 0.8, bolusAmount: 0, actuatorSaturated: false,
+    insulinRate: 0, basalRate: 0.8, bolusAmount: 0, bolusInsulin: 0, actuatorSaturated: false,
     subcutaneousInsulin: 0, plasmaInsulin: 0, glucoseMetabolism: 180,
     sensorNoise: 0, sensorReading: 180, lastSensorUpdate: 0,
     bleConnected: true, blePacketLoss: 0.02, bleDelay: 50, lastValidReading: 180,
@@ -57,6 +59,7 @@ export default function App() {
   });
   // Solo se guarda la ventana actual visible (80 puntos procesados en el backend)
   const [history, setHistory]   = useState<DataPoint[]>([]);
+  const [bolusEvents, setBolusEvents] = useState<BolusEvent[]>([]);
   const [totalBuffered, setTotalBuffered] = useState(0);
 
   const [running, setRunning]   = useState(false);
@@ -129,6 +132,7 @@ export default function App() {
           setSimState(msg.payload.state);
           setHistory(msg.payload.points);
           setTotalBuffered(msg.payload.totalBuffered);
+          if (msg.payload.bolusEvents) setBolusEvents(msg.payload.bolusEvents);
         } else if (msg.type === 'ready') {
           // Backend ready
         }
@@ -155,6 +159,7 @@ export default function App() {
   function handleReset() {
     setRunning(false);
     setNotification(null);
+    setBolusEvents([]);
     send('reset', { setpoint: config.setpoint, initialGlucose: config.initialGlucose });
     setViewOffset(0);
   }
@@ -258,6 +263,7 @@ export default function App() {
               viewOffset={viewOffset}
               maxOffset={Math.max(0, totalBuffered - WINDOW_POINTS)}
               onViewChange={handleViewChange}
+              bolusEvents={bolusEvents}
             />
           </div>
         </div>

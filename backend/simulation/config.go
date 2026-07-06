@@ -4,45 +4,44 @@ package simulation
 // CONFIGURACIÓN POR DEFECTO
 // ============================================================
 //
-// GANANCIAS PID CALIBRADAS PARA UN ADULTO T1D (70 kg):
+// CONFIGURACIÓN CALIBRADA PARA SETTLING EN 60–90 MIN
+// simulando NovoRapid con prebolo de 15 min (τ_sub=8 min):
 //
-//   Kp = 0.035  (antes: 0.10)
-//     Problema original: con error inicial de 80 mg/dL, el término P
-//     pedía 0.10×80 = 8 U/h desde el primer instante. Una bomba de
-//     insulina sana no aumenta la dosis de 0.8→8 U/h de golpe.
-//     Con Kp=0.035 la demanda P inicial es 2.8 U/h, mucho más gradual.
+//   Kp = 0.35
+//     Ganancia alta para un accionamiento agresivo e inmediato del actuador.
 //
-//   Ki = 0.0008  (antes: 0.004)
-//     El término I acumulaba error muy rápido (integralLimit=3000 * ki).
-//     Con Ki pequeño, la corrección integral tarda ~45 min en ser
-//     significativa, igual que en los sistemas APS comerciales.
+//   Ki = 0.020
+//     Ganancia integral mucho más rápida para cerrar el error a cero
+//     y forzar la transición a estado estable velozmente.
 //
-//   Kd = 0.4  (sin cambio significativo, se usa para frenar la caída)
-//     El derivativo ya estaba razonable. Se sube levemente para que
-//     cuando la glucosa caiga rápido, el controlador frene antes.
+//   Kd = 0.50
+//     Derivativo fuerte para frenar el ímpetu inicial y generar un amortiguamiento
+//     crítico (sin sobreimpulso).
 //
-//   MaxInsulinRate = 4.0 U/h  (antes: 30.0 U/h)
-//     El MiniMed 780G tiene un límite automático de ~3.5–4× la tasa
-//     basal del paciente. Con basal=0.8, el tope real es ≈3.2 U/h.
-//     4.0 U/h es un margen clínicamente razonable.
+//   τ_sub = 5 min
+//     Simplificación académica: se reduce la inercia del reservorio subcutáneo
+//     a 5 min para responder a la velocidad requerida por el control, evitando un polo dominante lento.
+//
+//   MaxInsulinRate = 12.0 U/h
+//     Tope alto para saturar libremente en el transitorio y proveer toda la energía.
 //
 func DefaultConfig() SimConfig {
 	return SimConfig{
 		PID: PIDParams{
-			Kp: 0.04,  // respuesta proporcional suave al arranque
-			Ki: 0.005, // integrador lento, sin windup en el transitorio
-			Kd: 0.05,   // modificado a 0.05 a pedido
+			Kp: 0.23,
+			Ki: 0.020,
+			Kd: 0.35,
 		},
 		Plant: PlantParams{
-			SubcutaneousTimeConstant: 30.0, // τ_sub = 30 min
-			AbsorptionDelay:          15.0, // tiempo muerto de 15 min
-			GlucoseSensitivity:       15, // ISF nominal (28 → Ks=1.0)
+			SubcutaneousTimeConstant: 5.0,  // τ_sub = 5 min (muy rápido, simplificación académica)
+			AbsorptionDelay:          3.0,  // retardo puro minimizado
+			GlucoseSensitivity:       18,   // ISF más responsivo
 			GlucoseBasalProduction:   0.8,
-			MetabolismTimeConstant:   50.0, // ajustado a 50 min
+			MetabolismTimeConstant:   20.0, // dinámica de digestión muy rápida
 		},
-		Setpoint:             100,  // target glicémico [mg/dL]
-		InitialGlucose:       180,  // glucosa inicial hiperglucémica
-		MaxInsulinRate:       4.0,  // tope clínico (~4×basal, MiniMed 780G)
+		Setpoint:             100,
+		InitialGlucose:       180,
+		MaxInsulinRate:       12.0, // Permite acción de control agresiva
 		MinInsulinRate:       0.0,
 		BasalRate:            0.8,  // tasa basal de fondo [U/h]
 		SensorNoiseLevel:     8,    // Guardian 4 σ≈8 mg/dL

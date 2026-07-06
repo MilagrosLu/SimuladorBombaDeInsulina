@@ -55,10 +55,17 @@ type ViewPayload struct {
 	Offset int `json:"offset"`
 }
 
+// BolusEvent – evento discreto de bolo (no se pierde con LTTB)
+type BolusEvent struct {
+	Time   float64 `json:"time"`
+	Amount float64 `json:"amount"`
+}
+
 type UpdatePayload struct {
-	Points []simulation.DataPoint     `json:"points"`
-	State  simulation.SimulationState `json:"state"`
-	TotalBuffered int                 `json:"totalBuffered"`
+	Points       []simulation.DataPoint     `json:"points"`
+	State        simulation.SimulationState `json:"state"`
+	TotalBuffered int                       `json:"totalBuffered"`
+	BolusEvents  []BolusEvent               `json:"bolusEvents"`
 }
 
 type StartPayload struct {
@@ -136,16 +143,18 @@ func (h *Hub) remove(c *Client) {
 
 // ── Loop de simulación ────────────────────────────────────────
 type simLoop struct {
-	hub       *Hub
-	history   []simulation.DataPoint
-	lastState simulation.SimulationState
-	mu        sync.RWMutex
+	hub         *Hub
+	history     []simulation.DataPoint
+	bolusEvents []BolusEvent
+	lastState   simulation.SimulationState
+	mu          sync.RWMutex
 }
 
 func newSimLoop(hub *Hub) *simLoop {
 	return &simLoop{
-		hub:     hub,
-		history: make([]simulation.DataPoint, 0, MAX_HISTORY),
+		hub:         hub,
+		history:     make([]simulation.DataPoint, 0, MAX_HISTORY),
+		bolusEvents: []BolusEvent{},
 	}
 }
 
@@ -207,6 +216,7 @@ func (sl *simLoop) run(cmdCh <-chan command) {
 
 				sl.mu.Lock()
 				sl.history = sl.history[:0]
+				sl.bolusEvents = []BolusEvent{}
 				sl.lastState = state
 				sl.mu.Unlock()
 				sl.broadcastUpdate()
@@ -225,6 +235,13 @@ func (sl *simLoop) run(cmdCh <-chan command) {
 			dp := simulation.ExtractDataPoint(state)
 
 			sl.mu.Lock()
+			// Registrar bolo como evento independiente (no se pierde con LTTB)
+			if state.BolusAmount > 0 {
+				sl.bolusEvents = append(sl.bolusEvents, BolusEvent{
+					Time:   state.Time,
+					Amount: state.BolusAmount,
+				})
+			}
 			if len(sl.history) >= MAX_HISTORY {
 				// Circular buffer shift
 				copy(sl.history, sl.history[1:])
@@ -254,6 +271,8 @@ func (sl *simLoop) broadcastUpdate() {
 	// Crear una copia temporal de todo el array es rápido en Go
 	histCopy := make([]simulation.DataPoint, n)
 	copy(histCopy, sl.history)
+	bolusEvsCopy := make([]BolusEvent, len(sl.bolusEvents))
+	copy(bolusEvsCopy, sl.bolusEvents)
 	sl.mu.RUnlock()
 
 	sl.hub.mu.RLock()
@@ -277,12 +296,28 @@ func (sl *simLoop) broadcastUpdate() {
 		windowed := histCopy[start:end]
 		downsampled := simulation.LTTBDownsample(windowed, CHART_POINTS)
 
+		// Filtrar bolos que caen en la ventana de tiempo visible
+		var windowedBoluses []BolusEvent
+		if len(windowed) > 0 {
+			tStart := windowed[0].Time
+			tEnd := windowed[len(windowed)-1].Time
+			for _, b := range bolusEvsCopy {
+				if b.Time >= tStart && b.Time <= tEnd {
+					windowedBoluses = append(windowedBoluses, b)
+				}
+			}
+		}
+		if windowedBoluses == nil {
+			windowedBoluses = []BolusEvent{}
+		}
+
 		msg := OutgoingMsg{
 			Type: "update",
 			Payload: UpdatePayload{
 				Points:        downsampled,
 				State:         state,
 				TotalBuffered: n,
+				BolusEvents:   windowedBoluses,
 			},
 		}
 

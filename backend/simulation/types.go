@@ -41,6 +41,7 @@ type PerturbationEvent struct {
 	StartTime   float64 `json:"startTime"`
 	Duration    float64 `json:"duration"`
 	Description string  `json:"description"`
+	BolusGiven  bool    `json:"bolusGiven"` // ya se inyectó el bolo feedforward
 }
 
 // PerformanceMetrics – métricas de desempeño
@@ -74,7 +75,8 @@ type SimulationState struct {
 
 	InsulinRate float64 `json:"insulinRate"`
 	BasalRate   float64 `json:"basalRate"`
-	BolusAmount float64 `json:"bolusAmount"`
+	BolusAmount float64 `json:"bolusAmount"`   // Bolo de correción feedforward [U]
+	BolusInsulin float64 `json:"bolusInsulin"` // Insulina de bolo aún en I_sub [U/min]
 	ActuatorSaturated bool `json:"actuatorSaturated"`
 
 	SubcutaneousInsulin float64 `json:"subcutaneousInsulin"`
