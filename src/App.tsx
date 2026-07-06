@@ -35,6 +35,7 @@ const CONFIG_URL = 'http://localhost:8080/config';
 const EMPTY_CONFIG: SimConfig = {
   pid: { kp: 0, ki: 0, kd: 0 },
   plant: { subcutaneousTimeConstant: 20, absorptionDelay: 10, glucoseSensitivity: 28, glucoseBasalProduction: 0.8, metabolismTimeConstant: 60 },
+  actuator: { stepsPerUnit: 200, volumePerStep: 0.5, unitsPerStep: 0.005 },
   setpoint: 100, initialGlucose: 180,
   maxInsulinRate: 4, minInsulinRate: 0,
   basalRate: 0.8, sensorNoiseLevel: 8, sensorUpdateInterval: 5, timeScale: 1,
@@ -46,9 +47,10 @@ export default function App() {
   // simState empieza con valores neutros; el primer mensaje 'update' del backend
   // lo sobreescribe con datos reales. Esto evita null checks en toda la UI.
   const [simState, setSimState] = useState<SimulationState>({
-    time: 0, setpoint: 100, glucoseReal: 180, glucoseMeasured: 180,
+    time: 0, setpoint: 100, glucoseReal: 180, glucoseMeasured: 180, glucosePredicted: 180,
     error: 80, pTerm: 0, iTerm: 0, dTerm: 0, pidOutput: 0,
-    insulinRate: 0, basalRate: 0.8, bolusAmount: 0, bolusInsulin: 0, actuatorSaturated: false,
+    totalRate: 0, insulinRate: 0, basalRate: 0.8, bolusAmount: 0, bolusInsulin: 0,
+    motorSteps: 0, actuatorSaturated: false,
     subcutaneousInsulin: 0, plasmaInsulin: 0, glucoseMetabolism: 180,
     sensorNoise: 0, sensorReading: 180, lastSensorUpdate: 0,
     bleConnected: true, blePacketLoss: 0.02, bleDelay: 50, lastValidReading: 180,

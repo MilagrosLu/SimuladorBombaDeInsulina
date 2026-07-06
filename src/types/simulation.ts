@@ -9,6 +9,13 @@ export interface PIDParams {
   kd: number;  // Ganancia derivativa
 }
 
+/** Parámetros físicos del actuador (micromotor de la bomba) */
+export interface ActuatorParams {
+  stepsPerUnit: number;  // pasos del motor por Unidad de insulina
+  volumePerStep: number; // µL por paso
+  unitsPerStep: number;  // U por paso (= 1/stepsPerUnit)
+}
+
 /** Estado completo del sistema en un instante dado */
 export interface SimulationState {
   // Tiempo
@@ -16,9 +23,10 @@ export interface SimulationState {
 
   // Señales del lazo de control
   setpoint: number;      // Referencia (mg/dL)
-  glucoseReal: number;   // Glucosa real en sangre (mg/dL)
-  glucoseMeasured: number; // Lectura del sensor (glucosa intersticial, mg/dL)
-  error: number;         // Error = medición - setpoint
+  glucoseReal: number;      // Glucosa real en sangre (mg/dL)
+  glucoseMeasured: number;  // Lectura filtrada del sensor (mg/dL)
+  glucosePredicted: number; // Predicción a 30 minutos (mg/dL)
+  error: number;            // Error = medición filtrada - setpoint
 
   // Términos del PID
   pTerm: number;
@@ -26,11 +34,13 @@ export interface SimulationState {
   dTerm: number;
   pidOutput: number;     // Salida total del controlador
 
-  // Actuador
-  insulinRate: number;   // Tasa de infusión (U/h)
-  basalRate: number;     // Tasa basal (U/h)
-  bolusAmount: number;   // Bolo feedforward (U) – impulso ante comidas
-  bolusInsulin: number;  // Cantidad del bolo inyectado en el paso actual (U)
+  // Actuador físico
+  totalRate: number;         // Tasa total = Basal PID + Bolo, tras saturación (U/h)
+  insulinRate: number;       // Tasa efectiva entregada (0 si oclusión) (U/h)
+  basalRate: number;         // Componente basal del PID (U/h)
+  bolusAmount: number;       // Bolo feedforward calculado (U)
+  bolusInsulin: number;      // Insulina de bolo añadida al sub-Q (U)
+  motorSteps: number;        // Pasos del micromotor en este tick
   actuatorSaturated: boolean;
 
   // Planta – estados internos
@@ -114,22 +124,24 @@ export type PerturbationType =
 export interface DataPoint {
   time: number;
   setpoint: number;        // referencia (puede cambiar en el tiempo)
-  glucoseReal: number;     // salida del proceso (planta)
-  glucoseMeasured: number; // salida del elemento de medición (sensor + ruido)
-  error: number;           // e(t) = glucoseMeasured − setpoint
+  glucoseReal: number;
+  glucoseMeasured: number;
+  glucosePredicted: number;
+  error: number;
   pidOutput: number;
-  insulinRate: number;  // tasa total = basal + bolo (U/h)
-  basalRate: number;    // tasa basal continua de fondo (U/h)
-  bolusAmount: number;  // bolo de corrección en este instante (U/h por encima del basal)
+  totalRate: number;
+  insulinRate: number;
+  basalRate: number;
+  bolusAmount: number;
+  motorSteps: number;
   pTerm: number;
   iTerm: number;
   dTerm: number;
-  // Señales de perturbación individuales (mg/dL/min de efecto en glucosa)
-  perturbMeal: number;     // efecto acumulado de comidas activas
-  perturbStress: number;   // efecto de estrés
-  perturbExercise: number; // efecto de ejercicio (negativo)
-  perturbOcclusion: number; // 1 si oclusión activa, 0 si no
-  perturbBLE: number;      // 1 si interferencia BLE activa, 0 si no
+  perturbMeal: number;
+  perturbStress: number;
+  perturbExercise: number;
+  perturbOcclusion: number;
+  perturbBLE: number;
 }
 
 /** Parámetros de la planta */
@@ -148,14 +160,15 @@ export interface PlantParams {
 export interface SimConfig {
   pid: PIDParams;
   plant: PlantParams;
+  actuator: ActuatorParams;
   setpoint: number;
-  initialGlucose: number;     // glucosa al inicio de la simulación (mg/dL)
-  maxInsulinRate: number;   // U/h máximo del actuador
-  minInsulinRate: number;   // 0 – no puede extraer insulina
-  basalRate: number;        // Tasa basal de fondo [U/h]
-  sensorNoiseLevel: number; // desviación estándar del ruido (mg/dL)
-  sensorUpdateInterval: number; // cada cuántos minutos el sensor actualiza
-  timeScale: number;        // segundos reales por minuto simulado
+  initialGlucose: number;
+  maxInsulinRate: number;
+  minInsulinRate: number;
+  basalRate: number;
+  sensorNoiseLevel: number;
+  sensorUpdateInterval: number;
+  timeScale: number;
 }
 
 /** Descripción de perturbación para el panel de explicaciones */

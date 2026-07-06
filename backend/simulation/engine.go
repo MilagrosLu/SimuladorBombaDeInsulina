@@ -1,19 +1,26 @@
 package simulation
 
 // ============================================================
-// MOTOR DE SIMULACIÓN EN GO
+// MOTOR DE SIMULACIÓN – MiniMed 780G-inspired
 // ============================================================
-// Puerto fiel de simulationEngine.ts al lenguaje Go.
-//
-// CONVENCIÓN DE SIGNOS:
-//   error e(t) = G_medida(t) − SP
-//   error > 0 → glucosa alta → PID inyecta MÁS insulina
-//   error < 0 → glucosa baja → PID reduce insulina (mínimo 0)
-//
-// MODELO FISIOLÓGICO (Bergman Minimal Model):
-//   dG/dt = −p1·(G − Gb) − X·G·Ks + D(t)
-//   dX/dt = −p2·X + p3·I
-//   dI/dt = (u − I) / τ_sub
+// Ciclo de control por tick (ver orden en Step):
+//  1. Perturbaciones externas
+//  2. Modelo de Bergman (planta fisiológica)
+//  3. Sensor CGM + ruido
+//  4. Comunicación BLE
+//  5. Filtro EMA sobre glucosa medida
+//  6. Tendencia de glucosa
+//  7. Predicción a 30 min
+//  8. Protect: Suspend Before Low
+//  9. Controlador PID (P + I con anti-windup + D)
+// 10. Bolo feedforward (comidas, separado del PID)
+// 11. Tasa Total = Basal PID + Bolo
+// 12. Saturación de salida
+// 13. Oclusión del actuador
+// 14. Actuador físico: tasa → pasos del micromotor → insulina sub-Q
+// 15. Absorción subcutánea (compartimento sub-Q → plasma)
+// 16. Siguiente tick usa insulina plasmática del paso anterior
+// 17. Actualización de UI (métricas, estado, alarmas)
 // ============================================================
 
 import (
@@ -21,42 +28,53 @@ import (
 	"math/rand"
 )
 
-// ── Parámetros del modelo de Bergman ────────────────────────
-// Valores de referencia: Cobelli et al. (2009), parámetros promedio
-// para adulto T1D de 70 kg.
+// ── Constantes del modelo fisiológico de Bergman ─────────────
 const (
-	dt              = 0.125  // min simulados por paso
-	stableTimeReq   = 5.0  // minutos continuos dentro de la banda
+	dt            = 0.125 // min por paso de simulación
+	stableTimeReq = 5.0   // min continuos dentro de la banda para declarar estable
 
-	// p1: clearance de glucosa endógena. Se ajusta levemente para dar una caída base.
+	// p1: clearance de glucosa endógena
 	p1 = 0.030
-
-	// p2: clearance de insulina en tejido.
-	// ACADÉMICO: El valor fisiológico real (0.025) produce un retardo de ~40 minutos (1/p2).
-	// Para un simulador de lazo cerrado rápido (settling < 60 min), necesitamos reducir el polo.
-	// Se aumenta p2 a 0.08 (retardo de ~12 min).
+	// p2: clearance de insulina en tejido (acelerado para respuesta académica)
 	p2 = 0.080
-
-	// p3: ganancia de sensibilidad insulínica.
-	// Se escala proporcionalmente al aumento de p2 para mantener la ganancia estática (p3/p2).
+	// p3: sensibilidad insulínica (escalado junto con p2)
 	p3 = 0.020
+
+	// EGP: producción hepática de glucosa [mg/dL/min]
+	EGP = 1.5
+
+	// Umbral Suspend Before Low [mg/dL]
+	suspendThreshold = 90.0
+	// Horizonte de predicción [min]
+	predictionHorizon = 30.0
+
+	// Filtro EMA del sensor (α pequeño = mayor suavizado)
+	alphaEMA = 0.20
+	// Filtro EMA de la derivada (α pequeño = mayor inmunidad al ruido)
+	alphaD = 0.05
 )
 
-// Engine mantiene el estado mutable entre pasos (equivalente a
-// las variables globales de simulationEngine.ts).
+// ── Engine – estado mutable entre ticks ──────────────────────
 type Engine struct {
+	// PID
 	integralAccum      float64
-	prevPIDError       float64
+	prevFilteredGlucose float64
 	filteredDerivative float64
-	tissueInsulinEffect float64
-	lastBLEReading     float64
 	lastPIDOutput      pidResult
+
+	// Sensor / BLE
+	filteredGlucose float64
+	lastBLEReading  float64
+
+	// Actuador
+	motorStepAccum float64 // acumulador de pasos fraccionarios del micromotor
+
+	// Planta fisiológica
+	tissueInsulinEffect float64 // X(t): efecto de insulina en tejido [mU/L/min]
+	plasmaInsulin       float64 // I_plasma(t): insulina en plasma [U/min]
 }
 
-// NewEngine crea un motor con estado limpio.
-func NewEngine() *Engine {
-	return &Engine{}
-}
+func NewEngine() *Engine { return &Engine{} }
 
 // ── Utilidades ───────────────────────────────────────────────
 
@@ -70,127 +88,48 @@ func clamp(v, lo, hi float64) float64 {
 	return v
 }
 
-// gaussianNoise genera ruido gaussiano con Box-Muller.
 func gaussianNoise(std float64) float64 {
 	u1 := rand.Float64()
 	if u1 < 1e-10 {
 		u1 = 1e-10
 	}
-	u2 := rand.Float64()
-	return std * math.Sqrt(-2*math.Log(u1)) * math.Cos(2*math.Pi*u2)
+	return std * math.Sqrt(-2*math.Log(u1)) * math.Cos(2*math.Pi*rand.Float64())
 }
 
-// ── PID ──────────────────────────────────────────────────────
+func sign(v float64) int {
+	if v > 0 {
+		return 1
+	}
+	if v < 0 {
+		return -1
+	}
+	return 0
+}
+
+// ── pidResult ────────────────────────────────────────────────
 type pidResult struct {
 	p, i, d, output float64
 	saturated        bool
 }
 
-func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin float64) pidResult {
-	kp, ki, kd := cfg.PID.Kp, cfg.PID.Ki, cfg.PID.Kd
-	controllerReading := pidError + cfg.Setpoint
-
-	// 1. Derivativo y Tendencia (Trend)
-	// Se calcula primero para usar la tendencia en predicciones de seguridad.
-	// Filtro pasa-bajos (EMA) para suavizar ruido del sensor antes de la derivada.
-	// Reducido a 0.05 para mayor inmunidad al ruido a expensas de un ligero retardo.
-	const alphaD = 0.05
-	rawDeriv := (pidError - e.prevPIDError) / dt
-	e.filteredDerivative = alphaD*rawDeriv + (1-alphaD)*e.filteredDerivative
-	d := kd * e.filteredDerivative
-	glucoseTrend := e.filteredDerivative // mg/dL por minuto
-
-	e.prevPIDError = pidError
-
-	// 2. Suspensión antes del límite bajo (Suspend Before Low)
-	// Elevado a 90 mg/dL según requerimiento para suspender administración
-	// de insulina y permitir que la glucosa se restablezca.
-	predictionHorizon := 30.0 // minutos
-	predictedGlucose := controllerReading + glucoseTrend*predictionHorizon
-
-	if controllerReading < 90 || predictedGlucose < 90 {
-		return pidResult{p: 0, i: 0, d: 0, output: 0, saturated: false}
-	}
-
-	// 3. Eliminada la Zona Muerta (Deadband)
-	// La zona muerta causaba un "agujero" no lineal al cruzar el setpoint, 
-	// congelando P e I, y permitiendo que D cause rebotes.
-	effectiveError := pidError
-
-	p := kp * effectiveError
-
-	// 5. Integral con Anti-Windup
-	const integralLimit = 3000.0
-	if effectiveError != 0 {
-		isFallingFast := effectiveError > 0 && glucoseTrend < -1.0
-		if !isFallingFast {
-			e.integralAccum += effectiveError * dt
-			e.integralAccum = clamp(e.integralAccum, -integralLimit, integralLimit)
-		}
-	}
-	// ELIMINADO: Leakage. En control clásico, el integrador debe mantener su valor
-	// estacionario cuando el error es 0 para contrarrestar perturbaciones constantes (EGP).
-	
-	i := ki * e.integralAccum
-
-	// 6. Cálculo de salida y saturación
-	// Se suma la Tasa Basal (esfuerzo nominal) por defecto. De esta forma, si el
-	// error es 0, el PID entrega la basal, y el integrador no necesita "remar"
-	// desde cero para empatar la producción de glucosa.
-	rawOutput := cfg.BasalRate + p + i + d
-	output := clamp(rawOutput, cfg.MinInsulinRate, cfg.MaxInsulinRate)
-
-	return pidResult{p: p, i: i, d: d, output: output, saturated:false}
-}
-
-// ── Planta (Bergman modificado con EGP absoluta) ──────────────
-func (e *Engine) stepPlant(glucose, subcutaneousInsulin, perturbEffect, sensitivityScale float64, cfg SimConfig) float64 {
-	// EGP: Producción Hepática de Glucosa constante (mg/dL/min)
-	const EGP = 1.5
-
-	// La insulina es absoluta. No hay "exceso" mágico sobre un basal ideal.
-	// Toda insulina en sangre aumenta el efecto tisular para contrarrestar EGP.
-	dX := -p2*e.tissueInsulinEffect + p3*subcutaneousInsulin
-	e.tissueInsulinEffect += dX * dt
-
-	var dG float64
-	if subcutaneousInsulin < 0.001 {
-		// Sin insulina, el hígado produce glucosa libremente
-		dG = EGP + perturbEffect
-	} else {
-		// El término p1 (0.005) es la eliminación natural. Ya no anclamos a Gb=100.
-		// El controlador DEBE encontrar el equilibrio con insulina.
-		dG = EGP - 0.005*glucose - e.tissueInsulinEffect*glucose*sensitivityScale + perturbEffect
-	}
-
-	return clamp(glucose+dG*dt, 20, 800)
-}
-
-// ── Sensor ───────────────────────────────────────────────────
-func stepSensor(processOutput, noiseLevel float64, cfg SimConfig, time, lastSensorUpdate float64) (reading float64, updated bool) {
-	noise := gaussianNoise(noiseLevel)
-	reading = clamp(processOutput+noise, 20, 400)
-	updated = (time - lastSensorUpdate) >= cfg.SensorUpdateInterval
-	return
-}
-
-// ── Perturbaciones ───────────────────────────────────────────
+// ── perturbResult ────────────────────────────────────────────
 type perturbResult struct {
-	glucoseEffect     float64
-	mealEffect        float64
-	stressEffect      float64
-	exerciseEffect    float64
-	occlusionActive   bool
-	bleInterference   bool
+	glucoseEffect   float64
+	mealEffect      float64
+	stressEffect    float64
+	exerciseEffect  float64
+	occlusionActive bool
+	bleInterference bool
 }
 
-func computePerturbationEffect(perturbations []PerturbationEvent, time float64) perturbResult {
+// ── BLOQUE 1: Perturbaciones ─────────────────────────────────
+func computePerturbations(perturbations []PerturbationEvent, t float64) perturbResult {
 	var r perturbResult
 	for _, p := range perturbations {
-		if time < p.StartTime || time > p.StartTime+p.Duration {
+		if t < p.StartTime || t > p.StartTime+p.Duration {
 			continue
 		}
-		progress := (time - p.StartTime) / p.Duration
+		progress := (t - p.StartTime) / p.Duration
 		switch p.Type {
 		case "meal_small", "meal_normal", "meal_large":
 			r.mealEffect += p.Magnitude * math.Exp(-5*math.Pow(progress-0.15, 2))
@@ -208,155 +147,191 @@ func computePerturbationEffect(perturbations []PerturbationEvent, time float64) 
 	return r
 }
 
+// ── BLOQUE 2: Modelo de Bergman (planta fisiológica) ─────────
+// Utiliza la insulina plasmática I_plasma del tick anterior.
+func (e *Engine) stepPlant(glucose, plasmaInsulin, perturbEffect, sensitivityScale float64) float64 {
+	dX := -p2*e.tissueInsulinEffect + p3*plasmaInsulin
+	e.tissueInsulinEffect += dX * dt
+
+	var dG float64
+	if plasmaInsulin < 0.001 {
+		dG = EGP + perturbEffect
+	} else {
+		dG = EGP - 0.005*glucose - e.tissueInsulinEffect*glucose*sensitivityScale + perturbEffect
+	}
+	return clamp(glucose+dG*dt, 20, 800)
+}
+
+// ── BLOQUE 3: Sensor CGM ─────────────────────────────────────
+func stepSensor(glucoseReal, noiseLevel, t, lastUpdate, updateInterval float64) (reading float64, updated bool) {
+	reading = clamp(glucoseReal+gaussianNoise(noiseLevel), 20, 400)
+	updated = (t - lastUpdate) >= updateInterval
+	return
+}
+
+// ── BLOQUE 5+6+7: Filtro EMA + Tendencia + Predicción ────────
+func (e *Engine) filterAndPredict(sensorReading float64) (filtered, trend, predicted float64) {
+	// Filtro EMA sobre la lectura del sensor
+	filtered = alphaEMA*sensorReading + (1-alphaEMA)*e.filteredGlucose
+	e.filteredGlucose = filtered
+
+	// Tendencia: derivada filtrada con EMA
+	rawDeriv := (filtered - e.prevFilteredGlucose) / dt
+	e.filteredDerivative = alphaD*rawDeriv + (1-alphaD)*e.filteredDerivative
+	e.prevFilteredGlucose = filtered
+	trend = e.filteredDerivative // mg/dL/min
+
+	// Predicción lineal a 30 min
+	predicted = filtered + trend*predictionHorizon
+	return
+}
+
+// ── BLOQUE 9: Controlador PID ────────────────────────────────
+func (e *Engine) computePID(pidError, trend float64, cfg SimConfig) pidResult {
+	kp, ki, kd := cfg.PID.Kp, cfg.PID.Ki, cfg.PID.Kd
+
+	p := kp * pidError
+
+	const integralLimit = 3000.0
+	if pidError != 0 {
+		// Anti-windup: congelar integral si la glucosa cae rápido
+		isFallingFast := pidError > 0 && trend < -1.0
+		if !isFallingFast {
+			e.integralAccum += pidError * dt
+			e.integralAccum = clamp(e.integralAccum, -integralLimit, integralLimit)
+		}
+	}
+	i := ki * e.integralAccum
+	d := kd * e.filteredDerivative
+
+	// La basal nominal se suma para que el PID opere alrededor del punto de equilibrio
+	raw := cfg.BasalRate + p + i + d
+	out := clamp(raw, cfg.MinInsulinRate, cfg.MaxInsulinRate)
+	saturated := raw != out
+
+	return pidResult{p: p, i: i, d: d, output: out, saturated: saturated}
+}
+
+// ── BLOQUE 10: Bolo feedforward (comidas) ────────────────────
+// Detecta el primer tick de cada comida y calcula un bolo parcial (40%).
+// Completamente separado del PID.
+func computeMealBolus(perts []PerturbationEvent, t float64, occluded bool, sensitivity float64) (bolusIntended, bolusEffective float64, updatedPerts []PerturbationEvent) {
+	updatedPerts = make([]PerturbationEvent, len(perts))
+	copy(updatedPerts, perts)
+
+	for idx := range updatedPerts {
+		p := &updatedPerts[idx]
+		isMeal := p.Type == "meal_small" || p.Type == "meal_normal" || p.Type == "meal_large"
+		if !isMeal || p.BolusGiven || t < p.StartTime || t > p.StartTime+p.Duration {
+			continue
+		}
+		gaussianArea := 0.44
+		totalRise := p.Magnitude * p.Duration * gaussianArea
+		bolus := (totalRise / sensitivity) * 0.40
+		bolusIntended = bolus
+		if !occluded {
+			bolusEffective = bolus
+		}
+		p.BolusGiven = true
+	}
+	return
+}
+
+// ── BLOQUE 14: Actuador físico (micromotor) ──────────────────
+// Convierte tasa [U/h] → pasos del motor → insulina sub-Q entregada [U/min].
+// Usa un acumulador de pasos para representar tasas pequeñas con precisión.
+func (e *Engine) stepActuator(rateUh float64, act ActuatorParams) (stepsThisTick, insulinDelivered float64) {
+	// U/h → U/min → U por tick
+	uPerTick := (rateUh / 60.0) * dt
+
+	// Convertir a pasos fraccionarios y acumular
+	fractionalSteps := uPerTick * act.StepsPerUnit
+	e.motorStepAccum += fractionalSteps
+
+	// Solo ejecutar pasos enteros (el micromotor es discreto)
+	wholeSteps := math.Floor(e.motorStepAccum)
+	e.motorStepAccum -= wholeSteps
+
+	stepsThisTick = wholeSteps
+	insulinDelivered = wholeSteps * act.UnitsPerStep // U entregadas en este tick
+	return
+}
+
+// ── BLOQUE 15: Absorción subcutánea → plasma ─────────────────
+// Compartimento sub-Q (primer orden, τ = SubcutaneousTimeConstant).
+// La insulina pasa gradualmente de sub-Q al plasma.
+func stepAbsorption(subQ, insulinDelivered float64, cfg SimConfig) (newSubQ, newPlasma float64) {
+	tau := cfg.Plant.SubcutaneousTimeConstant
+	// Convertir insulina entregada [U] al compartimento sub-Q [U/min]
+	uPerMin := insulinDelivered / dt
+	newSubQ = subQ + (dt/tau)*(uPerMin-subQ)
+	// El plasma recibe la misma cantidad que fluye fuera del compartimento sub-Q
+	newPlasma = newSubQ
+	return
+}
+
 // ── CreateInitialState ────────────────────────────────────────
-// Crea el estado inicial y reinicia el motor interno.
 func (e *Engine) CreateInitialState(setpoint, initialGlucose float64, cfg SimConfig) SimulationState {
 	initError := initialGlucose - setpoint
 
-	// Pre-cargar la insulina subcutánea al nivel de equilibrio basal siempre.
-	// El paciente siempre tiene la insulina basal en su cuerpo, sin importar su glucosa inicial.
+	// Pre-cargar insulina sub-Q al equilibrio basal
 	subQ := cfg.BasalRate / 60.0
 	tissue := (p3 / p2) * subQ
 	e.tissueInsulinEffect = tissue
-	
-	e.prevPIDError = initError
+	e.plasmaInsulin = subQ
+
+	e.prevFilteredGlucose = initialGlucose
+	e.filteredGlucose = initialGlucose
 	e.filteredDerivative = 0
 	e.lastBLEReading = initialGlucose
-
-	if cfg.PID.Ki > 0 {
-		e.integralAccum = 0 // Ya la basal provee el equilibrio
-	}
-	e.lastPIDOutput = pidResult{p: 0, i: 0, d: 0, output: cfg.BasalRate, saturated: false}
+	e.motorStepAccum = 0
+	e.integralAccum = 0
+	e.lastPIDOutput = pidResult{output: cfg.BasalRate}
 
 	return SimulationState{
-		Time:             0,
-		Setpoint:         setpoint,
-		GlucoseReal:      initialGlucose,
-		GlucoseMeasured:  initialGlucose,
-		Error:            initError,
-		GlucoseMetabolism: initialGlucose,
-		SensorReading:    initialGlucose,
-		BLEConnected:     true,
-		BLEPacketLoss:    0.02,
-		BLEDelay:         50,
-		LastValidReading: initialGlucose,
-		Perturbations:    []PerturbationEvent{},
-		SystemState:      "out_of_band",
-		Alarms:           []string{},
+		Time:                0,
+		Setpoint:            setpoint,
+		GlucoseReal:         initialGlucose,
+		GlucoseMeasured:     initialGlucose,
+		GlucosePredicted:    initialGlucose,
+		Error:               initError,
+		GlucoseMetabolism:   initialGlucose,
+		SensorReading:       initialGlucose,
+		BLEConnected:        true,
+		BLEPacketLoss:       0.02,
+		BLEDelay:            50,
+		LastValidReading:    initialGlucose,
+		Perturbations:       []PerturbationEvent{},
+		SystemState:         "out_of_band",
+		Alarms:              []string{},
 		Metrics: PerformanceMetrics{
 			SteadyStateError: initError,
 			MaxError:         math.Abs(initError),
 		},
-		TransientTime:       0,
-		LastTransientTime:   0,
 		SubcutaneousInsulin: subQ,
+		PlasmaInsulin:       subQ,
 	}
 }
 
-// ── Step – paso principal ─────────────────────────────────────
-// Equivalente exacto a simulationStep() de simulationEngine.ts.
+// ── Step – ciclo completo de simulación ──────────────────────
 func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	newTime := state.Time + dt
 
-	// Si hubo un fallo catastrófico (planta destruida), la simulación se congela físicamente
-	// (la glucosa y todas las variables quedan en línea plana, solo avanza el tiempo).
+	// Congelar si hubo fallo catastrófico
 	if state.SystemFailure {
 		state.Time = newTime
 		return state
 	}
 
-	// 1) Perturbaciones
-	pr := computePerturbationEffect(state.Perturbations, state.Time)
+	// ── 1. PERTURBACIONES ────────────────────────────────────
+	pr := computePerturbations(state.Perturbations, state.Time)
 
-	// 2) BLE
-	bleConnected := !pr.bleInterference
-	controllerReading := state.GlucoseMeasured
-	if bleConnected {
-		if rand.Float64() < state.BLEPacketLoss {
-			// paquete perdido → mantener última lectura
-		} else {
-			e.lastBLEReading = state.SensorReading
-		}
-		controllerReading = e.lastBLEReading
-	} else {
-		controllerReading = e.lastBLEReading
-	}
-
-	// 3) Error de control
-	pidError := controllerReading - state.Setpoint
-
-	// 4) PID – regulación continua de la tasa basal (Feedback)
-	// El PID trabaja siempre en lazo cerrado sobre la tasa basal.
-	// Si hay interferencia BLE, el controlador se congela en la última salida conocida
-	// ya que pierde comunicación con el sensor.
-	var pid pidResult
-	if bleConnected {
-		pid = e.computePID(pidError, cfg, state.SubcutaneousInsulin)
-		e.lastPIDOutput = pid
-	} else {
-		pid = e.lastPIDOutput
-	}
-
-	// 5) Actuador (oclusión bloquea salida del PID)
-	effectiveRate := pid.output
-	if pr.occlusionActive {
-		effectiveRate = 0
-	}
-
-	// 6) Bolo Feedforward ante comidas
-	// Estrategia: detectar el PRIMER paso en el que una comida está activa
-	// (StartTime <= state.Time < StartTime+dt) y BolusGiven==false.
-	// El flag BolusGiven se conserva en newPerts que se devuelve como estado.
-	bolusIntended := 0.0
-	bolusEffective := 0.0
-	newPerts := make([]PerturbationEvent, len(state.Perturbations))
-	copy(newPerts, state.Perturbations)
-	for i := range newPerts {
-		p := &newPerts[i]
-		isMeal := p.Type == "meal_small" || p.Type == "meal_normal" || p.Type == "meal_large"
-		// Detectar inicio de comida: es el primer paso donde state.Time cae dentro del rango
-		// y el bolo aún no fue dado.
-		if !isMeal || p.BolusGiven {
-			continue
-		}
-		// Ventana de detección: cualquier paso dentro de la duración de la comida
-		// (el flag asegura que solo se ejecuta una vez)
-		if state.Time < p.StartTime || state.Time > p.StartTime+p.Duration {
-			continue
-		}
-		// Cálculo correcto del bolo feedforward:
-		// La perturbación es una gaussiana: mealEffect = Magnitude * exp(-5*(progress-0.15)^2)
-		// El área total ≈ Magnitude * Duration * 0.44 [mg/dL*min]
-		// Para evitar que la insulina actúe más rápido que la digestión y cause una bajada
-		// inicial (dip), administramos solo un "Bolo Parcial" (40%). 
-		// El PID agresivo se encargará del 60% restante de forma dinámica.
-		gaussianArea := 0.44 
-		totalGlucoseRise := p.Magnitude * p.Duration * gaussianArea
-		bolusUnits := (totalGlucoseRise / cfg.Plant.GlucoseSensitivity) * 0.40
-		bolusIntended = bolusUnits
-		if !pr.occlusionActive {
-			bolusEffective = bolusUnits
-		}
-		p.BolusGiven = true
-	}
-
-	// 7) Absorción subcutánea (primer orden, τ = SubcutaneousTimeConstant)
-	tauSub := cfg.Plant.SubcutaneousTimeConstant
-	uNorm := effectiveRate / 60.0 // U/h → U/min
-	newSubQ := state.SubcutaneousInsulin + (dt/tauSub)*(uNorm-state.SubcutaneousInsulin)
-	// Inyección del bolo en I_sub con dimensiones correctas:
-	// I_sub está en U/min. Un bolo de B unidades eleva I_sub en B/τ_sub U/min,
-	// que el modelo absorbe exponencialmente con constante de tiempo τ_sub.
-	newSubQ += bolusEffective / tauSub
-
-	// 7) Planta
-	// GlucoseSensitivity=28 es la sensibilidad nominal. La dividimos por 28
-	// (en lugar de 35 original) para mantener la escala correcta con el
-	// nuevo p3 reducido. Con sensitivityScale=1.0 el modelo es el estándar.
+	// ── 2. MODELO DE BERGMAN ─────────────────────────────────
+	// Usa plasmaInsulin del tick anterior (separación física correcta)
 	sensitivityScale := cfg.Plant.GlucoseSensitivity / 28.0
-	newGlucose := e.stepPlant(state.GlucoseReal, newSubQ, pr.glucoseEffect, sensitivityScale, cfg)
+	newGlucose := e.stepPlant(state.GlucoseReal, state.PlasmaInsulin, pr.glucoseEffect, sensitivityScale)
 
-	// 8) Sensor – ruido aumentado si hay perturbación de ruido
+	// ── 3. SENSOR CGM ────────────────────────────────────────
 	noiseLevel := cfg.SensorNoiseLevel
 	for _, p := range state.Perturbations {
 		if p.Type == "sensor_noise" && state.Time >= p.StartTime && state.Time <= p.StartTime+p.Duration {
@@ -368,31 +343,80 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 			break
 		}
 	}
-	sensorReading, sensorUpdated := stepSensor(newGlucose, noiseLevel, cfg, newTime, state.LastSensorUpdate)
+	sensorReading, sensorUpdated := stepSensor(newGlucose, noiseLevel, newTime, state.LastSensorUpdate, cfg.SensorUpdateInterval)
 	newLastSensorUpdate := state.LastSensorUpdate
 	if sensorUpdated {
 		newLastSensorUpdate = newTime
 	}
-	newGlucoseMeasured := sensorReading
 
-	// 9) Estado estable
-	measuredError := newGlucoseMeasured - state.Setpoint
-	realError := newGlucose - state.Setpoint
-
-	// Perturbaciones activas (no sensor_noise)
-	hasActiveDisturbance := false
-	for _, p := range state.Perturbations {
-		if p.Type != "sensor_noise" && newTime >= p.StartTime && newTime <= p.StartTime+p.Duration {
-			hasActiveDisturbance = true
-			break
+	// ── 4. COMUNICACIÓN BLE ──────────────────────────────────
+	bleConnected := !pr.bleInterference
+	var bleReading float64
+	if bleConnected {
+		if rand.Float64() >= state.BLEPacketLoss {
+			e.lastBLEReading = sensorReading
 		}
-	}
-	timeSinceLastDisturbance := state.TimeSinceLastDisturbance + dt
-	if hasActiveDisturbance {
-		timeSinceLastDisturbance = 0
+		bleReading = e.lastBLEReading
+	} else {
+		bleReading = e.lastBLEReading
 	}
 
-	// El umbral estable es ±5 mg/dL desde el setpoint
+	// ── 5+6+7. FILTRO EMA + TENDENCIA + PREDICCIÓN ───────────
+	filtered, trend, predicted := e.filterAndPredict(bleReading)
+
+	// ── 8. SUSPEND BEFORE LOW ────────────────────────────────
+	suspendActive := filtered < suspendThreshold || predicted < suspendThreshold
+
+	// ── 9. CONTROLADOR PID ───────────────────────────────────
+	pidError := filtered - state.Setpoint
+	var pid pidResult
+	if bleConnected && !suspendActive {
+		pid = e.computePID(pidError, trend, cfg)
+		e.lastPIDOutput = pid
+	} else if !bleConnected {
+		// Sin comunicación: congelar última salida conocida
+		pid = e.lastPIDOutput
+	} else {
+		// Suspend Before Low activo: output = 0
+		pid = pidResult{p: 0, i: 0, d: 0, output: 0, saturated: false}
+		e.integralAccum = 0 // reset integral para evitar windup durante la suspensión
+	}
+
+	// ── 10. BOLO FEEDFORWARD ─────────────────────────────────
+	bolusIntended, bolusEffective, newPerts := computeMealBolus(
+		state.Perturbations, state.Time, pr.occlusionActive, cfg.Plant.GlucoseSensitivity,
+	)
+
+	// ── 11. TASA TOTAL = BASAL PID + BOLO ────────────────────
+	totalRateRaw := pid.output + bolusIntended
+
+	// ── 12. SATURACIÓN ───────────────────────────────────────
+	totalRate := clamp(totalRateRaw, cfg.MinInsulinRate, cfg.MaxInsulinRate)
+
+	// ── 13. OCLUSIÓN ─────────────────────────────────────────
+	// El PID sigue calculando pero el actuador no entrega insulina
+	effectiveRate := totalRate
+	if pr.occlusionActive {
+		effectiveRate = 0
+		bolusEffective = 0
+	}
+
+	// ── 14. ACTUADOR FÍSICO (micromotor) ─────────────────────
+	motorSteps, insulinDelivered := e.stepActuator(effectiveRate, cfg.Actuator)
+	// Añadir bolo como insulina entregada directamente al sub-Q
+	insulinDelivered += bolusEffective
+
+	// ── 15. ABSORCIÓN SUBCUTÁNEA → PLASMA ────────────────────
+	newSubQ, newPlasma := stepAbsorption(state.SubcutaneousInsulin, insulinDelivered, cfg)
+
+	// ── 16. El siguiente tick de Bergman usará newPlasma ─────
+	// (newPlasma queda guardado en SimulationState.PlasmaInsulin)
+
+	// ── 17. ACTUALIZACIÓN DE MÉTRICAS Y ESTADO ───────────────
+	realError := newGlucose - state.Setpoint
+	measuredError := filtered - state.Setpoint
+
+	// Estado estable: ±5 mg/dL durante stableTimeReq minutos continuos
 	stableThreshold := 5.0
 	isInsideBand := math.Abs(realError) <= stableThreshold
 	stableTime := state.StableTime
@@ -411,7 +435,6 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 
 	transientTime := state.TransientTime
 	lastTransientTime := state.LastTransientTime
-
 	if systemState != "stable" {
 		transientTime += dt
 	} else {
@@ -421,7 +444,20 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		transientTime = 0
 	}
 
-	// 9b) Métricas
+	// Perturbaciones activas (excluir sensor_noise)
+	hasActiveDisturbance := false
+	for _, p := range state.Perturbations {
+		if p.Type != "sensor_noise" && newTime >= p.StartTime && newTime <= p.StartTime+p.Duration {
+			hasActiveDisturbance = true
+			break
+		}
+	}
+	timeSinceLastDisturbance := state.TimeSinceLastDisturbance + dt
+	if hasActiveDisturbance {
+		timeSinceLastDisturbance = 0
+	}
+
+	// Métricas de desempeño
 	m := state.Metrics
 	absError := math.Abs(realError)
 	m.IAE += absError * dt
@@ -430,18 +466,15 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	if absError > m.MaxError {
 		m.MaxError = absError
 	}
-
-	currentOvershoot := ((newGlucose - state.Setpoint) / state.Setpoint) * 100
-	if currentOvershoot > m.Overshoot && realError > 0 {
-		m.Overshoot = currentOvershoot
+	overshoot := ((newGlucose - state.Setpoint) / state.Setpoint) * 100
+	if overshoot > m.Overshoot && realError > 0 {
+		m.Overshoot = overshoot
 	}
-
 	if newGlucose >= 70 && newGlucose <= 180 {
 		m.TimeInRange += dt
 	} else {
 		m.TimeOutOfRange += dt
 	}
-
 	if systemState == "stable" {
 		m.SteadyStateError = realError
 		if m.SettlingTime == nil {
@@ -456,55 +489,27 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		m.SettlingTime = nil
 		m.RecoveryTime = nil
 	}
-
-	// Rise time: primera vez que el error cambia de signo
 	if m.RiseTime == nil && sign(state.Error) != sign(realError) {
 		v := newTime
 		m.RiseTime = &v
 	}
 
-	// 10) Deteción de Falla del Sistema
-	// Umbrales clínicos: el organismo (carga del control) ya es afectado cuando el
-	// desvio se sostiene el tiempo suficiente para generar un efecto fisiológico real.
-	//
-	// HIPOGLUCEMIA (G < 70 mg/dL):
-	//   La glucosa cerebral empieza a disminuir a los 5 min, pero los síntomas
-	//   neuroglucopénicos clínicamente significativos aparecen entre los 10-20 min.
-	//   Umbral académico: 15 minutos continuos.
-	//
-	// HIPERGLUCEMIA SEVERA (G > 250 mg/dL):
-	//   Riesgo de cetoacidosis y daño microvascular acelerado. Sintomático
-	//   (fatiga, poliuria) en 1-2 horas. Umbral: 120 minutos continuos.
-	//
-	// HIPERGLUCEMIA MODERADA (G > 180 mg/dL):
-	//   Daño endotelial sostenido, síntomas leves. Umbral: 240 minutos (4 horas).
-	const (
-		hypoFailureThreshold      = 15.0  // min: inicio de neuroglucopenia
-		hyperSevereThreshold      = 250.0 // mg/dL: zona de cetoacidosis
-		hyperModerateThreshold    = 180.0 // mg/dL: daño microvascular
-		hyperSevereFailureMin     = 120.0 // min continuos en >250
-		hyperModerateFailureMin   = 240.0 // min continuos en >180
-	)
-
+	// Detección de falla catastrófica
 	hypoTime := state.HypoTime
 	hyperTime := state.HyperTime
-
 	if newGlucose < 70.0 {
 		hypoTime += dt
 	} else {
-		hypoTime = 0 // se resetea al salir de la zona de hipoglucemia
+		hypoTime = 0
 	}
-
 	if newGlucose >= 300.0 {
 		hyperTime += dt
 	} else {
-		hyperTime = 0 // se resetea al volver a < 300
+		hyperTime = 0
 	}
 
-	// La falla una vez declarada es permanente (el organismo ya fue afectado)
 	systemFailure := state.SystemFailure
 	failureReason := state.FailureReason
-
 	if !systemFailure {
 		if newGlucose <= 55.0 {
 			systemFailure = true
@@ -525,7 +530,7 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		qosReason = "Fallo de QoS: Hiperglucemia sintomática (> 180 mg/dL)"
 	}
 
-	// 11) Alarmas
+	// Alarmas
 	alarms := []string{}
 	if newGlucose < 70 {
 		alarms = append(alarms, "HIPOGLUCEMIA")
@@ -539,8 +544,11 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	if !bleConnected {
 		alarms = append(alarms, "SIN COMUNICACIÓN BLE")
 	}
+	if suspendActive {
+		alarms = append(alarms, "SUSPEND BEFORE LOW ACTIVO")
+	}
 
-	// 11) Limpiar perturbaciones expiradas (preservando flags BolusGiven)
+	// Limpiar perturbaciones expiradas
 	activePerts := []PerturbationEvent{}
 	for _, p := range newPerts {
 		if newTime <= p.StartTime+p.Duration {
@@ -548,28 +556,26 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		}
 	}
 
-	// 12) Separación basal/bolo para el gráfico
-	// BasalRate = salida continua del PID (siempre)
-	// BolusAmount = el bolo feedforward del paso actual (impulso discreto)
-	bolusActual := bolusIntended
-
 	return SimulationState{
 		Time:                     newTime,
 		Setpoint:                 state.Setpoint,
 		GlucoseReal:              newGlucose,
-		GlucoseMeasured:          newGlucoseMeasured,
+		GlucoseMeasured:          filtered,
+		GlucosePredicted:         predicted,
 		Error:                    measuredError,
 		PTerm:                    pid.p,
 		ITerm:                    pid.i,
 		DTerm:                    pid.d,
 		PIDOutput:                pid.output,
-		InsulinRate:              effectiveRate, // Tasa efectivamente inyectada (0 si hay oclusión)
-		BasalRate:                pid.output, // Tasa que el controlador "cree" que está enviando
-		BolusAmount:              bolusActual, // impulso feedforward de comida (discreto)
+		BasalRate:                pid.output,
+		BolusAmount:              bolusIntended,
 		BolusInsulin:             bolusEffective,
+		TotalRate:                totalRate,
+		InsulinRate:              effectiveRate,
+		MotorSteps:               motorSteps,
 		ActuatorSaturated:        pid.saturated,
 		SubcutaneousInsulin:      newSubQ,
-		PlasmaInsulin:            newSubQ,
+		PlasmaInsulin:            newPlasma,
 		GlucoseMetabolism:        newGlucose,
 		SensorNoise:              0,
 		SensorReading:            sensorReading,
@@ -597,7 +603,7 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 
 // ── ExtractDataPoint ──────────────────────────────────────────
 func ExtractDataPoint(state SimulationState) DataPoint {
-	pr := computePerturbationEffect(state.Perturbations, state.Time)
+	pr := computePerturbations(state.Perturbations, state.Time)
 	perturbOcclusion := 0.0
 	if pr.occlusionActive {
 		perturbOcclusion = 1
@@ -611,11 +617,14 @@ func ExtractDataPoint(state SimulationState) DataPoint {
 		Setpoint:         state.Setpoint,
 		GlucoseReal:      state.GlucoseReal,
 		GlucoseMeasured:  state.GlucoseMeasured,
+		GlucosePredicted: state.GlucosePredicted,
 		Error:            state.Error,
 		PIDOutput:        state.PIDOutput,
+		TotalRate:        state.TotalRate,
 		InsulinRate:      state.InsulinRate,
 		BasalRate:        state.BasalRate,
 		BolusAmount:      state.BolusAmount,
+		MotorSteps:       state.MotorSteps,
 		PTerm:            state.PTerm,
 		ITerm:            state.ITerm,
 		DTerm:            state.DTerm,
@@ -625,14 +634,4 @@ func ExtractDataPoint(state SimulationState) DataPoint {
 		PerturbOcclusion: perturbOcclusion,
 		PerturbBLE:       perturbBLE,
 	}
-}
-
-func sign(v float64) int {
-	if v > 0 {
-		return 1
-	}
-	if v < 0 {
-		return -1
-	}
-	return 0
 }

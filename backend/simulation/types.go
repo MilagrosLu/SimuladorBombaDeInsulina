@@ -1,7 +1,7 @@
 package simulation
 
 // ============================================================
-// TIPOS DEL SISTEMA – Puerto Go de simulation.ts
+// TIPOS DEL SISTEMA – Motor de Simulación MiniMed 780G-inspired
 // ============================================================
 
 // PIDParams – parámetros del controlador PID
@@ -11,27 +11,35 @@ type PIDParams struct {
 	Kd float64 `json:"kd"`
 }
 
-// PlantParams – parámetros de la planta (modelo Bergman)
+// ActuatorParams – parámetros físicos del micromotor de la bomba
+type ActuatorParams struct {
+	StepsPerUnit  float64 `json:"stepsPerUnit"`  // pasos del motor por Unidad de insulina
+	VolumePerStep float64 `json:"volumePerStep"` // µL por paso del motor
+	UnitsPerStep  float64 `json:"unitsPerStep"`  // U por paso (= 1/StepsPerUnit)
+}
+
+// PlantParams – parámetros de la planta fisiológica (modelo Bergman)
 type PlantParams struct {
 	SubcutaneousTimeConstant float64 `json:"subcutaneousTimeConstant"`
 	AbsorptionDelay          float64 `json:"absorptionDelay"`
 	GlucoseSensitivity       float64 `json:"glucoseSensitivity"`
 	GlucoseBasalProduction   float64 `json:"glucoseBasalProduction"`
-	MetabolismTimeConstant    float64 `json:"metabolismTimeConstant"`
+	MetabolismTimeConstant   float64 `json:"metabolismTimeConstant"`
 }
 
 // SimConfig – configuración global de la simulación
 type SimConfig struct {
-	PID                 PIDParams   `json:"pid"`
-	Plant               PlantParams `json:"plant"`
-	Setpoint            float64     `json:"setpoint"`
-	InitialGlucose      float64     `json:"initialGlucose"`
-	MaxInsulinRate      float64     `json:"maxInsulinRate"`
-	MinInsulinRate      float64     `json:"minInsulinRate"`
-	BasalRate           float64     `json:"basalRate"`
-	SensorNoiseLevel    float64     `json:"sensorNoiseLevel"`
-	SensorUpdateInterval float64    `json:"sensorUpdateInterval"`
-	TimeScale           float64     `json:"timeScale"`
+	PID                  PIDParams      `json:"pid"`
+	Plant                PlantParams    `json:"plant"`
+	Actuator             ActuatorParams `json:"actuator"`
+	Setpoint             float64        `json:"setpoint"`
+	InitialGlucose       float64        `json:"initialGlucose"`
+	MaxInsulinRate       float64        `json:"maxInsulinRate"`
+	MinInsulinRate       float64        `json:"minInsulinRate"`
+	BasalRate            float64        `json:"basalRate"`
+	SensorNoiseLevel     float64        `json:"sensorNoiseLevel"`
+	SensorUpdateInterval float64        `json:"sensorUpdateInterval"`
+	TimeScale            float64        `json:"timeScale"`
 }
 
 // PerturbationEvent – perturbación activa
@@ -44,72 +52,86 @@ type PerturbationEvent struct {
 	BolusGiven  bool    `json:"bolusGiven"` // ya se inyectó el bolo feedforward
 }
 
-// PerformanceMetrics – métricas de desempeño
+// PerformanceMetrics – métricas de desempeño del controlador
 type PerformanceMetrics struct {
-	SettlingTime    *float64 `json:"settlingTime"`
-	RiseTime        *float64 `json:"riseTime"`
-	Overshoot       float64  `json:"overshoot"`
-	SteadyStateError float64 `json:"steadyStateError"`
-	IAE             float64  `json:"iae"`
-	ISE             float64  `json:"ise"`
-	ITAE            float64  `json:"itae"`
-	MaxError        float64  `json:"maxError"`
-	TimeInRange     float64  `json:"timeInRange"`
-	TimeOutOfRange  float64  `json:"timeOutOfRange"`
-	RecoveryTime    *float64 `json:"recoveryTime"`
+	SettlingTime     *float64 `json:"settlingTime"`
+	RiseTime         *float64 `json:"riseTime"`
+	Overshoot        float64  `json:"overshoot"`
+	SteadyStateError float64  `json:"steadyStateError"`
+	IAE              float64  `json:"iae"`
+	ISE              float64  `json:"ise"`
+	ITAE             float64  `json:"itae"`
+	MaxError         float64  `json:"maxError"`
+	TimeInRange      float64  `json:"timeInRange"`
+	TimeOutOfRange   float64  `json:"timeOutOfRange"`
+	RecoveryTime     *float64 `json:"recoveryTime"`
 }
 
-// SimulationState – estado completo en un instante
+// SimulationState – estado completo del sistema en un instante t
 type SimulationState struct {
-	Time    float64 `json:"time"`
+	Time     float64 `json:"time"`
 	Setpoint float64 `json:"setpoint"`
 
+	// ── Glucosa ──────────────────────────────────────────────
 	GlucoseReal     float64 `json:"glucoseReal"`
 	GlucoseMeasured float64 `json:"glucoseMeasured"`
+	GlucosePredicted float64 `json:"glucosePredicted"` // predicción a 30 min
 	Error           float64 `json:"error"`
 
+	// ── Señales del controlador PID ──────────────────────────
 	PTerm     float64 `json:"pTerm"`
 	ITerm     float64 `json:"iTerm"`
 	DTerm     float64 `json:"dTerm"`
-	PIDOutput float64 `json:"pidOutput"`
+	PIDOutput float64 `json:"pidOutput"` // tasa basal calculada por el PID [U/h]
 
-	InsulinRate float64 `json:"insulinRate"`
-	BasalRate   float64 `json:"basalRate"`
-	BolusAmount float64 `json:"bolusAmount"`   // Bolo de correción feedforward [U]
-	BolusInsulin float64 `json:"bolusInsulin"` // Insulina de bolo aún en I_sub [U/min]
-	ActuatorSaturated bool `json:"actuatorSaturated"`
+	// ── Bolo feedforward (comidas) – separado del PID ────────
+	BolusAmount  float64 `json:"bolusAmount"`  // bolo calculado [U]
+	BolusInsulin float64 `json:"bolusInsulin"` // insulina de bolo añadida al compartimento sub-Q
 
-	SubcutaneousInsulin float64 `json:"subcutaneousInsulin"`
-	PlasmaInsulin       float64 `json:"plasmaInsulin"`
-	GlucoseMetabolism   float64 `json:"glucoseMetabolism"`
+	// ── Actuador (micromotor de la bomba) ────────────────────
+	TotalRate        float64 `json:"totalRate"`        // Basal PID + Feedforward, tras saturación [U/h]
+	InsulinRate      float64 `json:"insulinRate"`      // Tasa efectiva entregada (0 si hay oclusión) [U/h]
+	BasalRate        float64 `json:"basalRate"`        // Sólo la componente basal del PID
+	MotorSteps       float64 `json:"motorSteps"`       // Pasos del micromotor en este tick
+	ActuatorSaturated bool   `json:"actuatorSaturated"`
 
-	SensorNoise     float64 `json:"sensorNoise"`
-	SensorReading   float64 `json:"sensorReading"`
+	// ── Absorción subcutánea y plasma ────────────────────────
+	SubcutaneousInsulin float64 `json:"subcutaneousInsulin"` // insulina en compartimento sub-Q [U/min]
+	PlasmaInsulin       float64 `json:"plasmaInsulin"`       // insulina en plasma (efecto tisular)
+
+	// ── Modelo fisiológico ───────────────────────────────────
+	GlucoseMetabolism float64 `json:"glucoseMetabolism"`
+
+	// ── Sensor CGM ───────────────────────────────────────────
+	SensorNoise      float64 `json:"sensorNoise"`
+	SensorReading    float64 `json:"sensorReading"`
 	LastSensorUpdate float64 `json:"lastSensorUpdate"`
 
-	BLEConnected    bool    `json:"bleConnected"`
-	BLEPacketLoss   float64 `json:"blePacketLoss"`
-	BLEDelay        float64 `json:"bleDelay"`
+	// ── Comunicación BLE ─────────────────────────────────────
+	BLEConnected     bool    `json:"bleConnected"`
+	BLEPacketLoss    float64 `json:"blePacketLoss"`
+	BLEDelay         float64 `json:"bleDelay"`
 	LastValidReading float64 `json:"lastValidReading"`
 
+	// ── Perturbaciones ───────────────────────────────────────
 	Perturbations []PerturbationEvent `json:"perturbations"`
 
-	SystemState             string  `json:"systemState"` // "out_of_band" | "in_band" | "stable"
-	StableTime              float64 `json:"stableTime"`
+	// ── Estado del sistema ───────────────────────────────────
+	SystemState              string  `json:"systemState"` // "out_of_band" | "in_band" | "stable"
+	StableTime               float64 `json:"stableTime"`
 	TimeSinceLastDisturbance float64 `json:"timeSinceLastDisturbance"`
-	TransientTime           float64 `json:"transientTime"`
-	LastTransientTime       float64 `json:"lastTransientTime"`
+	TransientTime            float64 `json:"transientTime"`
+	LastTransientTime        float64 `json:"lastTransientTime"`
 
-	// Contadores de tiempo en zona de falla (minutos continuos)
+	// ── Contadores de tiempo en zona de falla ────────────────
 	HypoTime  float64 `json:"hypoTime"`  // min continuos con glucosa < 70 mg/dL
-	HyperTime float64 `json:"hyperTime"` // min continuos con glucosa > 180 mg/dL
+	HyperTime float64 `json:"hyperTime"` // min continuos con glucosa > 300 mg/dL
 
-	// Falla del sistema: cuando el organismo ya sufre el efecto del desvio
+	// ── Falla y QoS ──────────────────────────────────────────
 	SystemFailure bool   `json:"systemFailure"`
-	FailureReason string `json:"failureReason"` // descripción clínica de la falla
-
-	QoSFailure bool   `json:"qosFailure"`
-	QoSReason  string `json:"qosReason"`
+	FailureReason string `json:"failureReason"`
+	QoSFailure    bool   `json:"qosFailure"`
+	QoSReason     string `json:"qosReason"`
 
 	Alarms  []string           `json:"alarms"`
 	Metrics PerformanceMetrics `json:"metrics"`
@@ -120,22 +142,25 @@ type DataPoint struct {
 	Time     float64 `json:"time"`
 	Setpoint float64 `json:"setpoint"`
 
-	GlucoseReal     float64 `json:"glucoseReal"`
-	GlucoseMeasured float64 `json:"glucoseMeasured"`
-	Error           float64 `json:"error"`
+	GlucoseReal      float64 `json:"glucoseReal"`
+	GlucoseMeasured  float64 `json:"glucoseMeasured"`
+	GlucosePredicted float64 `json:"glucosePredicted"`
+	Error            float64 `json:"error"`
 
 	PIDOutput   float64 `json:"pidOutput"`
+	TotalRate   float64 `json:"totalRate"`
 	InsulinRate float64 `json:"insulinRate"`
 	BasalRate   float64 `json:"basalRate"`
 	BolusAmount float64 `json:"bolusAmount"`
+	MotorSteps  float64 `json:"motorSteps"`
 
 	PTerm float64 `json:"pTerm"`
 	ITerm float64 `json:"iTerm"`
 	DTerm float64 `json:"dTerm"`
 
-	PerturbMeal     float64 `json:"perturbMeal"`
-	PerturbStress   float64 `json:"perturbStress"`
-	PerturbExercise float64 `json:"perturbExercise"`
+	PerturbMeal      float64 `json:"perturbMeal"`
+	PerturbStress    float64 `json:"perturbStress"`
+	PerturbExercise  float64 `json:"perturbExercise"`
 	PerturbOcclusion float64 `json:"perturbOcclusion"`
-	PerturbBLE      float64 `json:"perturbBLE"`
+	PerturbBLE       float64 `json:"perturbBLE"`
 }

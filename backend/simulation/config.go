@@ -1,30 +1,34 @@
 package simulation
 
 // ============================================================
-// CONFIGURACIÓN POR DEFECTO
+// CONFIGURACIÓN POR DEFECTO – MiniMed 780G-inspired
 // ============================================================
 //
-// CONFIGURACIÓN CALIBRADA PARA SETTLING EN 60–90 MIN
-// simulando NovoRapid con prebolo de 15 min (τ_sub=8 min):
+// Presets calibrados para el nuevo ciclo de simulación con
+// actuador físico (micromotor) y compartimentos sub-Q/plasma separados.
 //
-//   Kp = 0.35
-//     Ganancia alta para un accionamiento agresivo e inmediato del actuador.
+// ── PRESET ÓPTIMO ──────────────────────────────────────────
+//   Kp=1.0, Ki=0.005, Kd=8.0
+//   Settling típico < 60 min. Respuesta amortiguada críticamente.
 //
-//   Ki = 0.020
-//     Ganancia integral mucho más rápida para cerrar el error a cero
-//     y forzar la transición a estado estable velozmente.
+// ── PRESET LENTO ───────────────────────────────────────────
+//   Kp=0.08, Ki=0.0005, Kd=0.5
+//   Settling > 4 h. El integrador arrastra lentamente al setpoint.
+//   Sin sobreimpulso pero con error estacionario prolongado.
 //
-//   Kd = 0.50
-//     Derivativo fuerte para frenar el ímpetu inicial y generar un amortiguamiento
-//     crítico (sin sobreimpulso).
+// ── PRESET INESTABLE (CICLO LÍMITE) ────────────────────────
+//   Kp=10.0, Ki=5.0, Kd=0.0
+//   Ganancias positivas extremas que causan windup agresivo.
+//   El sistema oscila entre ~90 y ~130 mg/dL indefinidamente.
+//   La protección Suspend Before Low evita el coma hipoglucémico.
 //
-//   τ_sub = 5 min
-//     Simplificación académica: se reduce la inercia del reservorio subcutáneo
-//     a 5 min para responder a la velocidad requerida por el control, evitando un polo dominante lento.
-//
-//   MaxInsulinRate = 30.0 U/h
-//     Tope alto para saturar libremente en el transitorio y permitir sobredosis en perfiles inestables.
-//
+// ── ACTUADOR FÍSICO ────────────────────────────────────────
+//   stepsPerUnit = 200   (200 pasos del motor = 1 U de insulina)
+//   volumePerStep = 0.5  (0.5 µL por paso)
+//   unitsPerStep = 0.005 (= 1/200 U por paso)
+//   Esto representa un micromotor de paso típico en bombas comerciales.
+// ============================================================
+
 func DefaultConfig() SimConfig {
 	return SimConfig{
 		PID: PIDParams{
@@ -33,19 +37,24 @@ func DefaultConfig() SimConfig {
 			Kd: 8.0,
 		},
 		Plant: PlantParams{
-			SubcutaneousTimeConstant: 3.0,  // τ_sub reducido para compensar el retardo sin necesidad de Kd alto
+			SubcutaneousTimeConstant: 3.0,
 			AbsorptionDelay:          3.0,
 			GlucoseSensitivity:       18,
 			GlucoseBasalProduction:   0.8,
 			MetabolismTimeConstant:   20.0,
 		},
+		Actuator: ActuatorParams{
+			StepsPerUnit:  200.0,  // 200 pasos = 1 U
+			VolumePerStep: 0.5,    // µL por paso
+			UnitsPerStep:  0.005,  // = 1/200 U por paso
+		},
 		Setpoint:             100,
 		InitialGlucose:       180,
-		MaxInsulinRate:       30.0, // Aumentado a 30 U/h para permitir sobredosis letal en perfil inestable
+		MaxInsulinRate:       30.0,
 		MinInsulinRate:       0.0,
-		BasalRate:            2.4,  // tasa basal calibrada para contrarrestar exactamente EGP (1.5 mg/dL/min) a 100 mg/dL
-		SensorNoiseLevel:     1,    // Guardian 4 σ≈8 mg/dL
-		SensorUpdateInterval: 5,    // CGM: actualización cada 5 min
+		BasalRate:            2.4,
+		SensorNoiseLevel:     1,
+		SensorUpdateInterval: 5,
 		TimeScale:            1,
 	}
 }
