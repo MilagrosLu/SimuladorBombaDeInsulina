@@ -8,7 +8,7 @@ import type { PerturbationType } from '../types/simulation';
 const CONFIGURABLE_DURATION_TYPES: PerturbationType[] = ['occlusion', 'ble_interference', 'sensor_noise'];
 
 interface PerturbationsPanelProps {
-  onPerturbation: (type: PerturbationType, duration?: number) => void;
+  onPerturbation: (type: PerturbationType, duration?: number, magnitude?: number) => void;
   activePerturbations: { type: PerturbationType }[];
 }
 
@@ -69,11 +69,14 @@ function PerturbButton({ icon, label, sublabel, color, active, onClick }: Pertur
 export function PerturbationsPanel({ onPerturbation, activePerturbations }: PerturbationsPanelProps) {
   const activeTypes = new Set(activePerturbations.map(p => p.type));
 
-  // Estado de duración personalizada para cada tipo configurable (en minutos)
   const [customDurations, setCustomDurations] = useState<Record<string, number>>({
     occlusion: 30,
     ble_interference: 20,
     sensor_noise: 25,
+  });
+
+  const [customMagnitudes, setCustomMagnitudes] = useState<Record<string, number>>({
+    sensor_noise: 40, // Base default para el slider (hasta 200 mg/dL de ruido si quiere)
   });
 
   const fmtDuration = (mins: number) => {
@@ -160,32 +163,62 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
                     <PerturbButton
                       {...b}
                       active={activeTypes.has(b.type)}
-                      onClick={() => onPerturbation(b.type, isConfigurable ? customDurations[b.type] : undefined)}
+                      onClick={() => onPerturbation(
+                        b.type, 
+                        isConfigurable ? customDurations[b.type] : undefined,
+                        b.type === 'sensor_noise' ? customMagnitudes[b.type] : undefined
+                      )}
                     />
                     {/* Control de duración solo para fallos técnicos */}
                     {isConfigurable && (
                       <div style={{
                         marginTop: 4, paddingLeft: 8,
-                        display: 'flex', alignItems: 'center', gap: 8,
+                        display: 'flex', flexDirection: 'column', gap: 6,
                       }}>
-                        <span style={{ fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          Duración:
-                        </span>
-                        <input
-                          type="range"
-                          min={5} max={2880} step={15}
-                          value={customDurations[b.type]}
-                          onChange={e => setCustomDurations(prev => ({
-                            ...prev, [b.type]: parseInt(e.target.value)
-                          }))}
-                          style={{
-                            flex: 1, accentColor: b.color, cursor: 'pointer',
-                            background: `linear-gradient(90deg, ${b.color}88 ${((customDurations[b.type] - 5) / 2875) * 100}%, var(--bg-input) 0%)`,
-                          }}
-                        />
-                        <span style={{ fontSize: 10, color: b.color, fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
-                          {fmtDuration(customDurations[b.type])}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 9, color: 'var(--text-muted)', minWidth: 45 }}>
+                            Duración:
+                          </span>
+                          <input
+                            type="range"
+                            min={5} max={2880} step={15}
+                            value={customDurations[b.type]}
+                            onChange={e => setCustomDurations(prev => ({
+                              ...prev, [b.type]: parseInt(e.target.value)
+                            }))}
+                            style={{
+                              flex: 1, accentColor: b.color, cursor: 'pointer',
+                              background: `linear-gradient(90deg, ${b.color}88 ${((customDurations[b.type] - 5) / 2875) * 100}%, var(--bg-input) 0%)`,
+                            }}
+                          />
+                          <span style={{ fontSize: 10, color: b.color, fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
+                            {fmtDuration(customDurations[b.type])}
+                          </span>
+                        </div>
+
+                        {/* Slider extra de Magnitud solo para ruido del sensor */}
+                        {b.type === 'sensor_noise' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 9, color: 'var(--text-muted)', minWidth: 45 }}>
+                              Magnitud:
+                            </span>
+                            <input
+                              type="range"
+                              min={5} max={500} step={5}
+                              value={customMagnitudes[b.type]}
+                              onChange={e => setCustomMagnitudes(prev => ({
+                                ...prev, [b.type]: parseInt(e.target.value)
+                              }))}
+                              style={{
+                                flex: 1, accentColor: b.color, cursor: 'pointer',
+                                background: `linear-gradient(90deg, ${b.color}88 ${((customMagnitudes[b.type] - 5) / 495) * 100}%, var(--bg-input) 0%)`,
+                              }}
+                            />
+                            <span style={{ fontSize: 10, color: b.color, fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
+                              ±{customMagnitudes[b.type]}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

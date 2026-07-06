@@ -55,6 +55,7 @@ export default function App() {
     perturbations: [], systemState: 'out_of_band', stableTime: 0,
     timeSinceLastDisturbance: 0, transientTime: 0, lastTransientTime: 0,
     hypoTime: 0, hyperTime: 0, systemFailure: false, failureReason: '',
+    qosFailure: false, qosReason: '',
     alarms: [],
     metrics: { iae: 0, ise: 0, itae: 0, maxError: 80, overshoot: 0, timeInRange: 0, timeOutOfRange: 0, steadyStateError: 80, settlingTime: null, riseTime: null, recoveryTime: null },
   });
@@ -133,6 +134,12 @@ export default function App() {
           setHistory(msg.payload.points);
           setTotalBuffered(msg.payload.totalBuffered);
           if (msg.payload.bolusEvents) setBolusEvents(msg.payload.bolusEvents);
+
+          // Si hay falla mortal, detener la simulación
+          if (msg.payload.state.systemFailure) {
+            setRunning(false);
+            ws.send(JSON.stringify({ type: 'pause' }));
+          }
         } else if (msg.type === 'ready') {
           // Backend ready
         }
@@ -176,10 +183,10 @@ export default function App() {
     }
   }
 
-  function handlePerturbation(type: PerturbationType, duration?: number) {
+  function handlePerturbation(type: PerturbationType, duration?: number, magnitude?: number) {
     send('perturbation', {
       type,
-      magnitude:   PERTURBATION_MAGNITUDES[type],
+      magnitude:   magnitude ?? PERTURBATION_MAGNITUDES[type],
       startTime:   simStateRef.current.time,
       duration:    duration ?? PERTURBATION_DURATIONS[type],
       description: type,

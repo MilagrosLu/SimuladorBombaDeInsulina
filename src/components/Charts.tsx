@@ -277,22 +277,41 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
   }, [perturbDomain, hasAny]);
 
   // ── PANEL 5: Insulina ──
-  const data5 = useMemo(() => ({
-    labels,
-    datasets: [
-      {
-        type: 'bar' as const,
-        label: 'Bolo',
-        data: data.map((p: DataPoint) => p.bolusAmount || 0),
-        backgroundColor: 'rgba(251,146,60,0.55)',
-        barThickness: 5
-      },
+  const data5 = useMemo(() => {
+    const bolusData = new Array(data.length).fill(0);
+    bolusList.forEach((b: {time: number, amount: number}) => {
+      if (data.length === 0) return;
+      let closestIdx = 0;
+      let minDiff = Infinity;
+      for (let i = 0; i < data.length; i++) {
+        const diff = Math.abs(data[i].time - b.time);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIdx = i;
+        }
+      }
+      if (data[closestIdx].perturbOcclusion === 0) {
+        bolusData[closestIdx] += b.amount;
+      }
+    });
+
+    return {
+      labels,
+      datasets: [
+        {
+          type: 'bar' as const,
+          label: 'Bolo',
+          data: bolusData,
+          backgroundColor: 'rgba(251,146,60,0.55)',
+          barThickness: 5
+        },
       {
         type: 'line' as const,
         label: 'Basal PID',
         data: data.map((p: DataPoint) => p.basalRate || 0),
         borderColor: '#0891b2',
         borderWidth: 1.5,
+        borderDash: [4, 4], // Punteado para que se vea la Insulina Inyectada debajo
         backgroundColor: 'rgba(8,145,178,0.18)',
         fill: true,
         stepped: 'before' as const
@@ -300,14 +319,14 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       {
         type: 'line' as const,
         label: 'Insulina Inyectada',
-        // Con oclusión activa (perturbOcclusion > 0) la insulina no llega: mostrar 0
-        data: data.map((p: DataPoint) => p.perturbOcclusion > 0 ? 0 : (p.insulinRate || 0)),
-        borderColor: '#22d3ee',
+        data: data.map((p: DataPoint, i: number) => (p.insulinRate || 0) + bolusData[i]),
+        borderColor: '#a855f7', // Violeta llamativo en lugar del celeste original
         borderWidth: 2,
         stepped: 'before' as const
       }
     ]
-  }), [data, labels]);
+  };
+  }, [data, labels, bolusList]);
   const options5 = useMemo(() => {
     const opt = getCommonOptions(insulinDomain.min, insulinDomain.max, false);
     // Anotaciones de bolos: una línea vertical naranja por cada evento

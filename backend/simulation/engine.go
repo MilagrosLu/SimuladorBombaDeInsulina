@@ -50,6 +50,7 @@ type Engine struct {
 	filteredDerivative float64
 	tissueInsulinEffect float64
 	lastBLEReading     float64
+	lastPIDOutput      pidResult
 }
 
 // NewEngine crea un motor con estado limpio.
@@ -108,7 +109,7 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 	if controllerReading < 75 || predictedGlucose < 70 {
 		// Vaciar el integrador para evitar un pico cuando vuelva a encenderse
 		e.integralAccum = 0
-		return pidResult{p: 0, i: 0, d: 0, output: 0, saturated: true}
+		return pidResult{p: 0, i: 0, d: 0, output: 0, saturated: false}
 	}
 
 	// 3. Zona Muerta (Deadband)
@@ -159,7 +160,7 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 	rawOutput := cfg.BasalRate + p + i + d
 	output := clamp(rawOutput, cfg.MinInsulinRate, cfg.MaxInsulinRate)
 
-	return pidResult{p: p, i: i, d: d, output: output, saturated: output != rawOutput}
+	return pidResult{p: p, i: i, d: d, output: output, saturated:false}
 }
 
 // ── Planta (Bergman, Euler explícito) ───────────────────────
@@ -177,10 +178,17 @@ func (e *Engine) stepPlant(glucose, subcutaneousInsulin, perturbEffect, sensitiv
 	dX := -p2*e.tissueInsulinEffect + p3*excessInsulin
 	e.tissueInsulinEffect += dX * dt
 
-	// dG/dt = −p1·(G − Gb) − X·G·Ks + D(t)
-	dG := -p1*(glucose-Gb) - e.tissueInsulinEffect*glucose*sensitivityScale + perturbEffect
+	var dG float64
+	if subcutaneousInsulin < 0.001 {
+		// Paciente T1D sin insulina: sin clearance natural de glucosa
+		// El hígado produce glucosa de forma descontrolada (Hepatic Glucose Production)
+		dG = 0.5 + perturbEffect
+	} else {
+		// dG/dt = −p1·(G − Gb) − X·G·Ks + D(t)
+		dG = -p1*(glucose-Gb) - e.tissueInsulinEffect*glucose*sensitivityScale + perturbEffect
+	}
 
-	return clamp(glucose+dG*dt, 20, 400)
+	return clamp(glucose+dG*dt, 20, 800)
 }
 
 // ── Sensor ───────────────────────────────────────────────────
@@ -236,6 +244,7 @@ func (e *Engine) CreateInitialState(setpoint, initialGlucose float64) Simulation
 	e.filteredDerivative = 0
 	e.tissueInsulinEffect = 0
 	e.lastBLEReading = initialGlucose
+	e.lastPIDOutput = pidResult{p: 0, i: 0, d: 0, output: 0.8, saturated: false}
 
 	return SimulationState{
 		Time:             0,
@@ -266,6 +275,13 @@ func (e *Engine) CreateInitialState(setpoint, initialGlucose float64) Simulation
 func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	newTime := state.Time + dt
 
+	// Si hubo un fallo catastrófico (planta destruida), la simulación se congela físicamente
+	// (la glucosa y todas las variables quedan en línea plana, solo avanza el tiempo).
+	if state.SystemFailure {
+		state.Time = newTime
+		return state
+	}
+
 	// 1) Perturbaciones
 	pr := computePerturbationEffect(state.Perturbations, state.Time)
 
@@ -288,8 +304,15 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 
 	// 4) PID – regulación continua de la tasa basal (Feedback)
 	// El PID trabaja siempre en lazo cerrado sobre la tasa basal.
-	// El bolo (feedforward) se gestiona por separado abajo.
-	pid := e.computePID(pidError, cfg, state.SubcutaneousInsulin)
+	// Si hay interferencia BLE, el controlador se congela en la última salida conocida
+	// ya que pierde comunicación con el sensor.
+	var pid pidResult
+	if bleConnected {
+		pid = e.computePID(pidError, cfg, state.SubcutaneousInsulin)
+		e.lastPIDOutput = pid
+	} else {
+		pid = e.lastPIDOutput
+	}
 
 	// 5) Actuador (oclusión bloquea salida del PID)
 	effectiveRate := pid.output
@@ -301,7 +324,8 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	// Estrategia: detectar el PRIMER paso en el que una comida está activa
 	// (StartTime <= state.Time < StartTime+dt) y BolusGiven==false.
 	// El flag BolusGiven se conserva en newPerts que se devuelve como estado.
-	bolusInjectedNow := 0.0
+	bolusIntended := 0.0
+	bolusEffective := 0.0
 	newPerts := make([]PerturbationEvent, len(state.Perturbations))
 	copy(newPerts, state.Perturbations)
 	for i := range newPerts {
@@ -326,7 +350,10 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		gaussianArea := 0.44 
 		totalGlucoseRise := p.Magnitude * p.Duration * gaussianArea
 		bolusUnits := (totalGlucoseRise / cfg.Plant.GlucoseSensitivity) * 0.40
-		bolusInjectedNow = bolusUnits
+		bolusIntended = bolusUnits
+		if !pr.occlusionActive {
+			bolusEffective = bolusUnits
+		}
 		p.BolusGiven = true
 	}
 
@@ -337,7 +364,7 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	// Inyección del bolo en I_sub con dimensiones correctas:
 	// I_sub está en U/min. Un bolo de B unidades eleva I_sub en B/τ_sub U/min,
 	// que el modelo absorbe exponencialmente con constante de tiempo τ_sub.
-	newSubQ += bolusInjectedNow / tauSub
+	newSubQ += bolusEffective / tauSub
 
 	// 7) Planta
 	// GlucoseSensitivity=28 es la sensibilidad nominal. La dividimos por 28
@@ -350,7 +377,11 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	noiseLevel := cfg.SensorNoiseLevel
 	for _, p := range state.Perturbations {
 		if p.Type == "sensor_noise" && state.Time >= p.StartTime && state.Time <= p.StartTime+p.Duration {
-			noiseLevel *= 5
+			if p.Magnitude > 0 {
+				noiseLevel = p.Magnitude
+			} else {
+				noiseLevel *= 5
+			}
 			break
 		}
 	}
@@ -486,10 +517,10 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		hypoTime = 0 // se resetea al salir de la zona de hipoglucemia
 	}
 
-	if newGlucose > hyperModerateThreshold {
+	if newGlucose >= 300.0 {
 		hyperTime += dt
 	} else {
-		hyperTime = 0 // se resetea al volver a rango aceptable
+		hyperTime = 0 // se resetea al volver a < 300
 	}
 
 	// La falla una vez declarada es permanente (el organismo ya fue afectado)
@@ -497,16 +528,23 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	failureReason := state.FailureReason
 
 	if !systemFailure {
-		if hypoTime >= hypoFailureThreshold {
+		if newGlucose <= 55.0 {
 			systemFailure = true
-			failureReason = "FALLA: Hipoglucemia sostenida >15 min – Neuroglucopenia cerebral establecida"
-		} else if newGlucose > hyperSevereThreshold && hyperTime >= hyperSevereFailureMin {
+			failureReason = "FALLO CATASTRÓFICO: Hipoglucemia severa (<= 55 mg/dL) – Coma instantáneo"
+		} else if newGlucose >= 300.0 && hyperTime >= 240.0 {
 			systemFailure = true
-			failureReason = "FALLA: Hiperglucemia severa (>250) sostenida >2 h – Riesgo de cetoacidosis"
-		} else if hyperTime >= hyperModerateFailureMin {
-			systemFailure = true
-			failureReason = "FALLA: Hiperglucemia moderada (>180) sostenida >4 h – Daño microvascular acumulado"
+			failureReason = "FALLO CATASTRÓFICO: Hiperglucemia prolongada (>= 300 mg/dL por 4h) – Cetoacidosis diabética"
 		}
+	}
+
+	qosFailure := false
+	qosReason := ""
+	if newGlucose < 70.0 {
+		qosFailure = true
+		qosReason = "Fallo de QoS: Hipoglucemia sintomática (< 70 mg/dL)"
+	} else if newGlucose > 180.0 {
+		qosFailure = true
+		qosReason = "Fallo de QoS: Hiperglucemia sintomática (> 180 mg/dL)"
 	}
 
 	// 11) Alarmas
@@ -516,9 +554,6 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	}
 	if newGlucose > 250 {
 		alarms = append(alarms, "HIPERGLUCEMIA")
-	}
-	if pid.saturated {
-		alarms = append(alarms, "ACTUADOR SATURADO")
 	}
 	if pr.occlusionActive {
 		alarms = append(alarms, "OCLUSIÓN DE CÁNULA")
@@ -538,7 +573,7 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	// 12) Separación basal/bolo para el gráfico
 	// BasalRate = salida continua del PID (siempre)
 	// BolusAmount = el bolo feedforward del paso actual (impulso discreto)
-	bolusActual := bolusInjectedNow
+	bolusActual := bolusIntended
 
 	return SimulationState{
 		Time:                     newTime,
@@ -550,10 +585,10 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		ITerm:                    pid.i,
 		DTerm:                    pid.d,
 		PIDOutput:                pid.output,
-		InsulinRate:              pid.output,
-		BasalRate:                pid.output, // tasa basal = salida del PID (feedback continuo)
+		InsulinRate:              effectiveRate, // Tasa efectivamente inyectada (0 si hay oclusión)
+		BasalRate:                pid.output, // Tasa que el controlador "cree" que está enviando
 		BolusAmount:              bolusActual, // impulso feedforward de comida (discreto)
-		BolusInsulin:             bolusInjectedNow,
+		BolusInsulin:             bolusEffective,
 		ActuatorSaturated:        pid.saturated,
 		SubcutaneousInsulin:      newSubQ,
 		PlasmaInsulin:            newSubQ,
@@ -575,6 +610,8 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		HyperTime:                hyperTime,
 		SystemFailure:            systemFailure,
 		FailureReason:            failureReason,
+		QoSFailure:               qosFailure,
+		QoSReason:                qosReason,
 		Alarms:                   alarms,
 		Metrics:                  m,
 	}

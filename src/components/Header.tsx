@@ -123,41 +123,34 @@ export function Header({
               {v}×
             </button>
           ))}
-          {/* Input de valor personalizado */}
-          <input
-            type="number"
-            min={1}
-            max={100}
-            step={1}
-            value={timeScale}
-            onChange={e => {
-              const v = Math.max(1, Math.min(100, parseFloat(e.target.value) || 1));
-              onTimeScaleChange(v);
-            }}
-            title="Multiplicador de velocidad personalizado"
-            style={{
-              width: 48, padding: '2px 4px', borderRadius: 4,
-              background: 'var(--bg-input)', border: '1px solid var(--border)',
-              color: 'var(--cyan)', fontFamily: 'var(--font-mono)', fontSize: 11,
-              textAlign: 'center',
-            }}
-          />
-        </div>
-
-        {/* Relación tiempo real ↔ simulado */}
-        <div style={{
-          fontSize: 10, color: 'var(--text-muted)',
-          background: 'var(--bg-input)', border: '1px solid var(--border)',
-          borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap',
-        }}>
-          <span style={{ color: 'var(--text-secondary)' }}>1 seg real</span>
-          {' = '}
-          <span style={{ color: 'var(--cyan)', fontWeight: 700 }}>
-            {(timeScale * 5) >= 60
-              ? `${((timeScale * 5) / 60).toFixed(1)} h`
-              : `${timeScale * 5} min`}
-          </span>
-          {' simulados'}
+          {/* Input de valor personalizado (Minutos simulados por segundo) */}
+          <div style={{
+            display: 'flex', alignItems: 'center', background: 'var(--bg-input)',
+            border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', gap: 4
+          }}>
+            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>1s =</span>
+            <input
+              type="number"
+              min={1}
+              max={5000}
+              step={5}
+              value={timeScale * 5}
+              onChange={e => {
+                // El usuario ingresa los minutos simulados por segundo real.
+                // Como cada tick base procesa 5 min, el multiplicador es minutos / 5.
+                const mins = Math.max(0.5, Math.min(5000, parseFloat(e.target.value) || 5));
+                onTimeScaleChange(mins / 5);
+              }}
+              title="Minutos simulados por cada segundo real"
+              style={{
+                width: 48, padding: '2px 0',
+                background: 'transparent', border: 'none',
+                color: 'var(--cyan)', fontFamily: 'var(--font-mono)', fontSize: 11,
+                textAlign: 'center', outline: 'none'
+              }}
+            />
+            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>min</span>
+          </div>
         </div>
       </div>
 

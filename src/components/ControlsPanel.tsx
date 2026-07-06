@@ -121,7 +121,7 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
             label="Kp — Ganancia Proporcional [U/h / (mg/dL)]"
             value={config.pid.kp}
             min={0}
-            max={1.0}
+            max={2.0}
             step={0.01}
             onChange={v => updatePID('kp', v)}
             color="var(--blue)"
@@ -133,7 +133,7 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
             value={config.pid.ki}
             min={0}
             max={0.05}
-            step={0.001}
+            step={0.0001}
             onChange={v => updatePID('ki', v)}
             color="var(--purple)"
             description="Elimina el error en estado estacionario. Demasiado alto → oscilaciones e inestabilidad."
@@ -156,8 +156,8 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
           border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-secondary)' }}>💡 Valores de referencia:</strong><br />
           ✅ <strong style={{ color: 'var(--green)' }}>Óptimo (actual):</strong> Kp=0.23, Ki=0.020, Kd=0.35<br />
-          ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.04, Ki=0.003, Kd=0.1<br />
-          🔴 <strong style={{ color: 'var(--red)' }}>Inestable:</strong> Kp=0.8, Ki=0.015, Kd=0.0
+          ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.015, Ki=0.0005, Kd=0.40<br />
+          🔴 <strong style={{ color: 'var(--red)' }}>Inestable (Hipo):</strong> Kp=1.20, Ki=0.040, Kd=0.00
         </div>
       </section>
     </div>

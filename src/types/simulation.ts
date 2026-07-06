@@ -63,9 +63,12 @@ export interface SimulationState {
   hypoTime: number;   // minutos continuos con glucosa < 70 mg/dL
   hyperTime: number;  // minutos continuos con glucosa > 180 mg/dL
 
-  // Falla del sistema (permanente una vez declarada)
+  // Falla del sistema: cuando el organismo ya sufre el efecto del desvio
   systemFailure: boolean;
-  failureReason: string;
+  failureReason: string; // descripción clínica de la falla
+
+  qosFailure: boolean;
+  qosReason: string;
 
   // Alarmas
   alarms: string[];

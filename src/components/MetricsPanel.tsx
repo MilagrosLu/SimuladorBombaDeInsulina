@@ -105,32 +105,36 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
         </div>
       )}
 
-      {/* Barras de progreso hacia falla (solo si no hay falla declarada) */}
-      {!state.systemFailure && state.hypoTime > 0 && (
+      {/* Barras de progreso hacia falla catastrófica (solo si no hay falla declarada) */}
+      {!state.systemFailure && state.hyperTime > 0 && state.glucoseReal >= 300 && (
         <div style={{ padding: '4px 0' }}>
-          <div style={{ fontSize: 9, color: 'var(--purple)', marginBottom: 2 }}>
-            ⚠ Hipoglucemia: {state.hypoTime.toFixed(1)} / 15 min
+          <div style={{ fontSize: 9, color: 'var(--red)', marginBottom: 2 }}>
+            ⚠ Cetoacidosis inminente: {state.hyperTime.toFixed(1)} / 240 min
           </div>
           <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
             <div style={{
               height: '100%', borderRadius: 2,
-              width: `${Math.min(100, (state.hypoTime / 15) * 100)}%`,
-              background: 'var(--purple)', transition: 'width 0.4s'
+              width: `${Math.min(100, (state.hyperTime / 240) * 100)}%`,
+              background: 'var(--red)', transition: 'width 0.4s'
             }} />
           </div>
         </div>
       )}
-      {!state.systemFailure && state.hyperTime > 0 && (
-        <div style={{ padding: '4px 0' }}>
-          <div style={{ fontSize: 9, color: 'var(--orange)', marginBottom: 2 }}>
-            ⚠ Hiperglucemia: {state.hyperTime.toFixed(1)} / {state.glucoseReal > 250 ? '120' : '240'} min
+
+      {/* ── Síntomas clínicos (Fallos QoS / Leves) ── */}
+      {!state.systemFailure && state.qosFailure && state.glucoseReal < 70 && (
+        <div style={{ padding: '8px 10px', background: 'rgba(168, 85, 247, 0.1)', border: '1px solid var(--purple)', borderRadius: 6, marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--purple)', marginBottom: 4 }}>{state.qosReason}</div>
+          <div style={{ fontSize: 9, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            El paciente experimenta síntomas autonómicos: sudoración, temblores, palpitaciones y ansiedad. La planta fisiológica está sufriendo consecuencias.
           </div>
-          <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
-            <div style={{
-              height: '100%', borderRadius: 2,
-              width: `${Math.min(100, (state.hyperTime / (state.glucoseReal > 250 ? 120 : 240)) * 100)}%`,
-              background: 'var(--orange)', transition: 'width 0.4s'
-            }} />
+        </div>
+      )}
+      {!state.systemFailure && state.qosFailure && state.glucoseReal > 180 && (
+        <div style={{ padding: '8px 10px', background: 'rgba(249, 115, 22, 0.1)', border: '1px solid var(--orange)', borderRadius: 6, marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--orange)', marginBottom: 4 }}>{state.qosReason}</div>
+          <div style={{ fontSize: 9, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            El paciente experimenta sed excesiva, micción frecuente y fatiga. La carga del sistema comienza a sufrir daño microvascular leve por toxicidad.
           </div>
         </div>
       )}
@@ -175,7 +179,7 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
 
       <div className="divider" />
 
-      {/* ── PID ── */}
+      {/* ── PID ──
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 4 }}>
         Controlador PID
@@ -190,12 +194,12 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           color="var(--cyan)"
           highlight
         />
-      </div>
+      </div> */}
 
-      <div className="divider" />
+      {/* <div className="divider" /> */}
 
       {/* ── Actuador ── */}
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+      {/* <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 4 }}>
         Actuador – Micromotor
       </div>
@@ -207,7 +211,7 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
         />
         <MetricRow label="Tasa Basal" value={state.basalRate.toFixed(2)} unit="U/h" />
         <MetricRow label="Bolo Automático" value={state.bolusAmount.toFixed(2)} unit="U" color="var(--yellow)" />
-      </div>
+      </div> */}
 
       <div className="divider" />
 
@@ -222,6 +226,12 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           value={state.sensorReading.toFixed(1)}
           unit="mg/dL"
           color="var(--green)"
+        />
+        <MetricRow
+          label="Glucosa Controlador"
+          value={state.lastValidReading.toFixed(1)}
+          unit="mg/dL"
+          color={state.bleConnected ? "var(--green)" : "var(--yellow)"}
         />
         <div className="metric-item">
           <span className="metric-label">BLE</span>
@@ -268,23 +278,9 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           unit="min"
         />
         <MetricRow
-          label="Sobreimpulso (Mp)"
-          value={state.metrics.overshoot.toFixed(1)}
-          unit="%"
-        />
-        <MetricRow
-          label="Error Máx. Transitorio"
-          value={state.metrics.maxError.toFixed(1)}
-          unit="mg/dL"
-        />
-        <MetricRow
           label="Error Estacionario"
           value={state.systemState === 'stable' ? state.metrics.steadyStateError.toFixed(1) : '--'}
           unit="mg/dL"
-        />
-        <MetricRow
-          label="ITAE"
-          value={state.metrics.itae.toFixed(0)}
         />
       </div>
 

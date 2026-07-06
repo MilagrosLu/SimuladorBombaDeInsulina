@@ -108,6 +108,9 @@ type SimulationState struct {
 	SystemFailure bool   `json:"systemFailure"`
 	FailureReason string `json:"failureReason"` // descripción clínica de la falla
 
+	QoSFailure bool   `json:"qosFailure"`
+	QoSReason  string `json:"qosReason"`
+
 	Alarms  []string           `json:"alarms"`
 	Metrics PerformanceMetrics `json:"metrics"`
 }
