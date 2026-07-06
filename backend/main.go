@@ -161,7 +161,7 @@ func newSimLoop(hub *Hub) *simLoop {
 func (sl *simLoop) run(cmdCh <-chan command) {
 	engine := simulation.NewEngine()
 	cfg := simulation.DefaultConfig()
-	state := engine.CreateInitialState(cfg.Setpoint, cfg.InitialGlucose)
+	state := engine.CreateInitialState(cfg.Setpoint, cfg.InitialGlucose, cfg)
 
 	running := false
 	timeScale := 1.0
@@ -212,7 +212,7 @@ func (sl *simLoop) run(cmdCh <-chan command) {
 				running = false
 				cfg.Setpoint = cmd.resetSP
 				cfg.InitialGlucose = cmd.resetIG
-				state = engine.CreateInitialState(cmd.resetSP, cmd.resetIG)
+				state = engine.CreateInitialState(cmd.resetSP, cmd.resetIG, cfg)
 
 				sl.mu.Lock()
 				sl.history = sl.history[:0]

@@ -22,28 +22,28 @@ package simulation
 //     Simplificación académica: se reduce la inercia del reservorio subcutáneo
 //     a 5 min para responder a la velocidad requerida por el control, evitando un polo dominante lento.
 //
-//   MaxInsulinRate = 12.0 U/h
-//     Tope alto para saturar libremente en el transitorio y proveer toda la energía.
+//   MaxInsulinRate = 30.0 U/h
+//     Tope alto para saturar libremente en el transitorio y permitir sobredosis en perfiles inestables.
 //
 func DefaultConfig() SimConfig {
 	return SimConfig{
 		PID: PIDParams{
-			Kp: 0.23,
-			Ki: 0.020,
-			Kd: 0.35,
+			Kp: 1.0,
+			Ki: 0.005,
+			Kd: 8.0,
 		},
 		Plant: PlantParams{
-			SubcutaneousTimeConstant: 5.0,  // τ_sub = 5 min (muy rápido, simplificación académica)
-			AbsorptionDelay:          3.0,  // retardo puro minimizado
-			GlucoseSensitivity:       18,   // ISF más responsivo
+			SubcutaneousTimeConstant: 3.0,  // τ_sub reducido para compensar el retardo sin necesidad de Kd alto
+			AbsorptionDelay:          3.0,
+			GlucoseSensitivity:       18,
 			GlucoseBasalProduction:   0.8,
-			MetabolismTimeConstant:   20.0, // dinámica de digestión muy rápida
+			MetabolismTimeConstant:   20.0,
 		},
 		Setpoint:             100,
 		InitialGlucose:       180,
-		MaxInsulinRate:       12.0, // Permite acción de control agresiva
+		MaxInsulinRate:       30.0, // Aumentado a 30 U/h para permitir sobredosis letal en perfil inestable
 		MinInsulinRate:       0.0,
-		BasalRate:            0.8,  // tasa basal de fondo [U/h]
+		BasalRate:            2.4,  // tasa basal calibrada para contrarrestar exactamente EGP (1.5 mg/dL/min) a 100 mg/dL
 		SensorNoiseLevel:     1,    // Guardian 4 σ≈8 mg/dL
 		SensorUpdateInterval: 5,    // CGM: actualización cada 5 min
 		TimeScale:            1,
