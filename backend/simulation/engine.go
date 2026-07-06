@@ -103,12 +103,12 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 	e.prevPIDError = pidError
 
 	// 2. Suspensión antes del límite bajo (Suspend Before Low)
-	// Reducido a 40 mg/dL para fines académicos, permitiendo que perfiles
-	// inestables generen hipoglucemias severas (fallo catastrófico <= 55) sin protección temprana.
+	// Elevado a 90 mg/dL según requerimiento para suspender administración
+	// de insulina y permitir que la glucosa se restablezca.
 	predictionHorizon := 30.0 // minutos
 	predictedGlucose := controllerReading + glucoseTrend*predictionHorizon
 
-	if controllerReading < 40 || predictedGlucose < 40 {
+	if controllerReading < 90 || predictedGlucose < 90 {
 		return pidResult{p: 0, i: 0, d: 0, output: 0, saturated: false}
 	}
 
