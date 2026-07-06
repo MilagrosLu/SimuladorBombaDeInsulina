@@ -26,7 +26,7 @@ import (
 // para adulto T1D de 70 kg.
 const (
 	dt              = 0.125  // min simulados por paso
-	stableTimeReq   = 10.0  // minutos continuos dentro de la banda (óptimo para settling <90 min)
+	stableTimeReq   = 5.0  // minutos continuos dentro de la banda
 
 	// p1: clearance de glucosa endógena. Se ajusta levemente para dar una caída base.
 	p1 = 0.030
@@ -403,8 +403,10 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	}
 
 	systemState := "out_of_band"
-	if isInsideBand {
+	if stableTime >= stableTimeReq {
 		systemState = "stable"
+	} else if isInsideBand {
+		systemState = "in_band"
 	}
 
 	transientTime := state.TransientTime

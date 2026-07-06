@@ -1,6 +1,7 @@
 // ============================================================
 // PANEL DE CONTROLES – PID, Setpoint, Actuador
 // ============================================================
+import { useState, useEffect } from 'react';
 import type { SimConfig } from '../types/simulation';
 
 interface ControlsPanelProps {
@@ -45,6 +46,49 @@ function Slider({ id, label, value, min, max, step, onChange, color, description
         <span>{min}</span>
         <span>{max}</span>
       </div>
+    </div>
+	);
+}
+
+function NumberInput({ label, value, onChange, color, description, step = 0.01 }: any) {
+  const [localVal, setLocalVal] = useState(value.toString());
+
+  useEffect(() => {
+    if (parseFloat(localVal) !== value && localVal !== '' && localVal !== '-') {
+      setLocalVal(value.toString());
+    }
+  }, [value]);
+
+  const handleChange = (e: any) => {
+    const val = e.target.value;
+    setLocalVal(val);
+    const parsed = parseFloat(val);
+    if (!isNaN(parsed)) {
+      onChange(parsed);
+    }
+  };
+
+  return (
+    <div className="slider-container" title={description} style={{ borderLeft: `3px solid ${color || 'var(--cyan)'}` }}>
+      <div className="slider-header" style={{ marginBottom: 4 }}>
+        <label>{label}</label>
+      </div>
+      <input
+        type="number"
+        step={step}
+        value={localVal}
+        onChange={handleChange}
+        style={{
+          width: '100%',
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-primary)',
+          padding: '6px 8px',
+          borderRadius: '4px',
+          fontFamily: 'monospace',
+          fontSize: '14px'
+        }}
+      />
     </div>
   );
 }
@@ -116,36 +160,27 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Slider
-            id="kp"
+          <NumberInput
             label="Kp — Ganancia Proporcional [U/h / (mg/dL)]"
             value={config.pid.kp}
-            min={0}
-            max={2.0}
-            step={0.01}
-            onChange={v => updatePID('kp', v)}
+            step={0.1}
+            onChange={(v: number) => updatePID('kp', v)}
             color="var(--blue)"
             description="Respuesta proporcional al error actual. Mayor Kp = respuesta más rápida pero puede oscilar."
           />
-          <Slider
-            id="ki"
+          <NumberInput
             label="Ki — Ganancia Integral [U/h / (mg/dL·min)]"
             value={config.pid.ki}
-            min={0}
-            max={0.05}
-            step={0.0001}
-            onChange={v => updatePID('ki', v)}
+            step={0.001}
+            onChange={(v: number) => updatePID('ki', v)}
             color="var(--purple)"
             description="Elimina el error en estado estacionario. Demasiado alto → oscilaciones e inestabilidad."
           />
-          <Slider
-            id="kd"
+          <NumberInput
             label="Kd — Ganancia Derivativa [U/h / (mg/dL/min)]"
             value={config.pid.kd}
-            min={0}
-            max={5.0}
-            step={0.05}
-            onChange={v => updatePID('kd', v)}
+            step={0.1}
+            onChange={(v: number) => updatePID('kd', v)}
             color="var(--orange)"
             description="Anticipa cambios del error. Demasiado alto + ruido → señal errática."
           />
@@ -155,9 +190,9 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
         <div style={{ marginTop: 10, padding: 8, background: 'var(--bg-input)', borderRadius: 6,
           border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-secondary)' }}>💡 Valores de referencia:</strong><br />
-          ✅ <strong style={{ color: 'var(--green)' }}>Óptimo (actual):</strong> Kp=0.23, Ki=0.020, Kd=0.35<br />
-          ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.015, Ki=0.0005, Kd=0.40<br />
-          🔴 <strong style={{ color: 'var(--red)' }}>Inestable (Hipo):</strong> Kp=1.20, Ki=0.040, Kd=0.00
+          ✅ <strong style={{ color: 'var(--green)' }}>Óptimo (actual):</strong> Kp=1.0, Ki=0.005, Kd=8.0<br />
+          ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.10, Ki=0.001, Kd=1.0<br />
+          🔴 <strong style={{ color: 'var(--red)' }}>Inestable (Oscilatorio):</strong> Kp=10.0, Ki=5.0, Kd=0.0
         </div>
       </section>
     </div>
