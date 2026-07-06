@@ -383,9 +383,19 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	}
 
 	// ── 10. BOLO FEEDFORWARD ─────────────────────────────────
-	bolusIntended, bolusEffective, newPerts := computeMealBolus(
-		state.Perturbations, state.Time, pr.occlusionActive, cfg.Plant.GlucoseSensitivity,
-	)
+	// Solo se aplica cuando Kd > 0: el término derivativo es quien anticipa
+	// la subida de glucosa y complementa la acción feedforward.
+	// Sin Kd, el bolo causaría un sobreimpulso no controlado.
+	var bolusIntended, bolusEffective float64
+	var newPerts []PerturbationEvent
+	if cfg.PID.Kd > 0 {
+		bolusIntended, bolusEffective, newPerts = computeMealBolus(
+			state.Perturbations, state.Time, pr.occlusionActive, cfg.Plant.GlucoseSensitivity,
+		)
+	} else {
+		newPerts = make([]PerturbationEvent, len(state.Perturbations))
+		copy(newPerts, state.Perturbations)
+	}
 
 	// ── 11. TASA TOTAL = BASAL PID + BOLO ────────────────────
 	totalRateRaw := pid.output + bolusIntended
@@ -543,9 +553,6 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	}
 	if !bleConnected {
 		alarms = append(alarms, "SIN COMUNICACIÓN BLE")
-	}
-	if suspendActive {
-		alarms = append(alarms, "SUSPEND BEFORE LOW ACTIVO")
 	}
 
 	// Limpiar perturbaciones expiradas
