@@ -378,7 +378,6 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	// 9) Estado estable
 	measuredError := newGlucoseMeasured - state.Setpoint
 	realError := newGlucose - state.Setpoint
-	glucoseVelocity := (newGlucose - state.GlucoseReal) / dt
 
 	// Perturbaciones activas (no sensor_noise)
 	hasActiveDisturbance := false
@@ -403,14 +402,9 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		stableTime = 0
 	}
 
-	isPhysiologicallyStable := stableTime >= stableTimeReq &&
-		math.Abs(glucoseVelocity) < 0.2
-
 	systemState := "out_of_band"
-	if isPhysiologicallyStable {
+	if isInsideBand {
 		systemState = "stable"
-	} else if isInsideBand {
-		systemState = "in_band"
 	}
 
 	transientTime := state.TransientTime
