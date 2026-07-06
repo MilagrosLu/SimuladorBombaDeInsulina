@@ -25,7 +25,7 @@ import (
 // Valores de referencia: Cobelli et al. (2009), parámetros promedio
 // para adulto T1D de 70 kg.
 const (
-	dt              = 0.25  // min simulados por paso
+	dt              = 0.125  // min simulados por paso
 	stableTimeReq   = 10.0  // minutos continuos dentro de la banda (óptimo para settling <90 min)
 
 	// p1: clearance de glucosa endógena. Se ajusta levemente para dar una caída base.
@@ -92,7 +92,9 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 
 	// 1. Derivativo y Tendencia (Trend)
 	// Se calcula primero para usar la tendencia en predicciones de seguridad.
-	const alphaD = 0.15
+	// Filtro pasa-bajos (EMA) para suavizar ruido del sensor antes de la derivada.
+	// Reducido a 0.05 para mayor inmunidad al ruido a expensas de un ligero retardo.
+	const alphaD = 0.05
 	rawDeriv := (pidError - e.prevPIDError) / dt
 	e.filteredDerivative = alphaD*rawDeriv + (1-alphaD)*e.filteredDerivative
 	d := kd * e.filteredDerivative
@@ -101,44 +103,23 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 	e.prevPIDError = pidError
 
 	// 2. Suspensión antes del límite bajo (Suspend Before Low)
-	// Comportamiento clave de bombas comerciales: corta toda infusión si
-	// el paciente está en hipoglucemia (< 75) o se proyecta que lo estará.
+	// Reducido a 40 mg/dL para fines académicos, permitiendo que perfiles
+	// inestables generen hipoglucemias severas (fallo catastrófico <= 55) sin protección temprana.
 	predictionHorizon := 30.0 // minutos
 	predictedGlucose := controllerReading + glucoseTrend*predictionHorizon
 
-	if controllerReading < 75 || predictedGlucose < 70 {
-		// Vaciar el integrador para evitar un pico cuando vuelva a encenderse
-		e.integralAccum = 0
+	if controllerReading < 40 || predictedGlucose < 40 {
 		return pidResult{p: 0, i: 0, d: 0, output: 0, saturated: false}
 	}
 
-	// 3. Zona Muerta (Deadband)
-	// Si estamos muy cerca del setpoint (±3 mg/dL), consideramos el error 0.
-	// Esto evita micro-correcciones constantes que causan oscilación.
-	deadband := 3.0
-	var effectiveError float64
-	if pidError > deadband {
-		effectiveError = pidError - deadband
-	} else if pidError < -deadband {
-		effectiveError = pidError + deadband
-	} else {
-		effectiveError = 0
-	}
+	// 3. Eliminada la Zona Muerta (Deadband)
+	// La zona muerta causaba un "agujero" no lineal al cruzar el setpoint, 
+	// congelando P e I, y permitiendo que D cause rebotes.
+	effectiveError := pidError
 
-	// 4. IOB (Insulin On Board)
-	// Descontamos la insulina "en vuelo" del error efectivo solo cuando
-	// el paciente está alto y requiere más insulina.
-	iobEquivalent := subcutaneousInsulin * (1800.0 / cfg.Plant.GlucoseSensitivity)
-	if effectiveError > 0 && iobEquivalent > 0 {
-		effectiveError = math.Max(0, effectiveError-iobEquivalent)
-	}
-
-	// Proporcional
 	p := kp * effectiveError
 
-	// 5. Integral con Anti-Windup Inteligente
-	// - No se acumula si el error efectivo es cero (en zona muerta).
-	// - No se acumula error positivo si la glucosa está cayendo rápidamente.
+	// 5. Integral con Anti-Windup
 	const integralLimit = 3000.0
 	if effectiveError != 0 {
 		isFallingFast := effectiveError > 0 && glucoseTrend < -1.0
@@ -146,11 +127,10 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 			e.integralAccum += effectiveError * dt
 			e.integralAccum = clamp(e.integralAccum, -integralLimit, integralLimit)
 		}
-	} else {
-		// Leakage (decaimiento): en la zona muerta, la memoria del integrador
-		// decae para asegurar que la insulina administrada tienda al basal.
-		e.integralAccum *= 0.98
 	}
+	// ELIMINADO: Leakage. En control clásico, el integrador debe mantener su valor
+	// estacionario cuando el error es 0 para contrarrestar perturbaciones constantes (EGP).
+	
 	i := ki * e.integralAccum
 
 	// 6. Cálculo de salida y saturación
@@ -163,29 +143,24 @@ func (e *Engine) computePID(pidError float64, cfg SimConfig, subcutaneousInsulin
 	return pidResult{p: p, i: i, d: d, output: output, saturated:false}
 }
 
-// ── Planta (Bergman, Euler explícito) ───────────────────────
+// ── Planta (Bergman modificado con EGP absoluta) ──────────────
 func (e *Engine) stepPlant(glucose, subcutaneousInsulin, perturbEffect, sensitivityScale float64, cfg SimConfig) float64 {
-	const Gb = 100.0
+	// EGP: Producción Hepática de Glucosa constante (mg/dL/min)
+	const EGP = 1.5
 
-	// En el modelo de Bergman, la insulina que afecta a la glucosa es
-	// la insulina ACTIVA POR ENCIMA del nivel basal (exceso de insulina).
-	// Si el paciente recibe exactamente su tasa basal, el exceso es 0,
-	// y la glucosa tenderá naturalmente a Gb.
-	basalInsulinMin := cfg.BasalRate / 60.0 // U/min
-	excessInsulin := subcutaneousInsulin - basalInsulinMin
-
-	// dX/dt = −p2·X + p3·(I - Ib)
-	dX := -p2*e.tissueInsulinEffect + p3*excessInsulin
+	// La insulina es absoluta. No hay "exceso" mágico sobre un basal ideal.
+	// Toda insulina en sangre aumenta el efecto tisular para contrarrestar EGP.
+	dX := -p2*e.tissueInsulinEffect + p3*subcutaneousInsulin
 	e.tissueInsulinEffect += dX * dt
 
 	var dG float64
 	if subcutaneousInsulin < 0.001 {
-		// Paciente T1D sin insulina: sin clearance natural de glucosa
-		// El hígado produce glucosa de forma descontrolada (Hepatic Glucose Production)
-		dG = 0.5 + perturbEffect
+		// Sin insulina, el hígado produce glucosa libremente
+		dG = EGP + perturbEffect
 	} else {
-		// dG/dt = −p1·(G − Gb) − X·G·Ks + D(t)
-		dG = -p1*(glucose-Gb) - e.tissueInsulinEffect*glucose*sensitivityScale + perturbEffect
+		// El término p1 (0.005) es la eliminación natural. Ya no anclamos a Gb=100.
+		// El controlador DEBE encontrar el equilibrio con insulina.
+		dG = EGP - 0.005*glucose - e.tissueInsulinEffect*glucose*sensitivityScale + perturbEffect
 	}
 
 	return clamp(glucose+dG*dt, 20, 800)
@@ -235,16 +210,23 @@ func computePerturbationEffect(perturbations []PerturbationEvent, time float64) 
 
 // ── CreateInitialState ────────────────────────────────────────
 // Crea el estado inicial y reinicia el motor interno.
-func (e *Engine) CreateInitialState(setpoint, initialGlucose float64) SimulationState {
+func (e *Engine) CreateInitialState(setpoint, initialGlucose float64, cfg SimConfig) SimulationState {
 	initError := initialGlucose - setpoint
 
-	// Reiniciar estado interno del motor
-	e.integralAccum = 0
+	// Pre-cargar la insulina subcutánea al nivel de equilibrio basal siempre.
+	// El paciente siempre tiene la insulina basal en su cuerpo, sin importar su glucosa inicial.
+	subQ := cfg.BasalRate / 60.0
+	tissue := (p3 / p2) * subQ
+	e.tissueInsulinEffect = tissue
+	
 	e.prevPIDError = initError
 	e.filteredDerivative = 0
-	e.tissueInsulinEffect = 0
 	e.lastBLEReading = initialGlucose
-	e.lastPIDOutput = pidResult{p: 0, i: 0, d: 0, output: 0.8, saturated: false}
+
+	if cfg.PID.Ki > 0 {
+		e.integralAccum = 0 // Ya la basal provee el equilibrio
+	}
+	e.lastPIDOutput = pidResult{p: 0, i: 0, d: 0, output: cfg.BasalRate, saturated: false}
 
 	return SimulationState{
 		Time:             0,
@@ -265,8 +247,9 @@ func (e *Engine) CreateInitialState(setpoint, initialGlucose float64) Simulation
 			SteadyStateError: initError,
 			MaxError:         math.Abs(initError),
 		},
-		TransientTime:     0,
-		LastTransientTime: 0,
+		TransientTime:       0,
+		LastTransientTime:   0,
+		SubcutaneousInsulin: subQ,
 	}
 }
 
@@ -410,8 +393,8 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		timeSinceLastDisturbance = 0
 	}
 
-	// El umbral estable ahora es ±5% del setpoint en lugar de un valor absoluto
-	stableThreshold := state.Setpoint * 0.05
+	// El umbral estable es ±5 mg/dL desde el setpoint
+	stableThreshold := 5.0
 	isInsideBand := math.Abs(realError) <= stableThreshold
 	stableTime := state.StableTime
 	if isInsideBand {
@@ -421,8 +404,7 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 	}
 
 	isPhysiologicallyStable := stableTime >= stableTimeReq &&
-		math.Abs(glucoseVelocity) < 0.2 &&
-		!hasActiveDisturbance
+		math.Abs(glucoseVelocity) < 0.2
 
 	systemState := "out_of_band"
 	if isPhysiologicallyStable {
