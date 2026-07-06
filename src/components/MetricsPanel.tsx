@@ -76,6 +76,65 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* ── Banner de FALLA DEL SISTEMA (permanente una vez activado) ── */}
+      {state.systemFailure && (
+        <div style={{
+          background: 'rgba(220,38,38,0.15)',
+          border: '2px solid var(--red)',
+          borderRadius: 6,
+          padding: '10px 12px',
+          marginBottom: 4,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--red)', letterSpacing: '0.05em', marginBottom: 4 }}>
+            ⛔ FALLA DEL SISTEMA
+          </div>
+          <div style={{ fontSize: 10, color: '#fca5a5', lineHeight: 1.5 }}>
+            {state.failureReason}
+          </div>
+          {state.hypoTime > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--purple)', marginTop: 4 }}>
+              Hipoglucemia acumulada: {state.hypoTime.toFixed(1)} min
+            </div>
+          )}
+          {state.hyperTime > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--orange)', marginTop: 2 }}>
+              Hiperglucemia acumulada: {state.hyperTime.toFixed(1)} min
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Barras de progreso hacia falla (solo si no hay falla declarada) */}
+      {!state.systemFailure && state.hypoTime > 0 && (
+        <div style={{ padding: '4px 0' }}>
+          <div style={{ fontSize: 9, color: 'var(--purple)', marginBottom: 2 }}>
+            ⚠ Hipoglucemia: {state.hypoTime.toFixed(1)} / 15 min
+          </div>
+          <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+            <div style={{
+              height: '100%', borderRadius: 2,
+              width: `${Math.min(100, (state.hypoTime / 15) * 100)}%`,
+              background: 'var(--purple)', transition: 'width 0.4s'
+            }} />
+          </div>
+        </div>
+      )}
+      {!state.systemFailure && state.hyperTime > 0 && (
+        <div style={{ padding: '4px 0' }}>
+          <div style={{ fontSize: 9, color: 'var(--orange)', marginBottom: 2 }}>
+            ⚠ Hiperglucemia: {state.hyperTime.toFixed(1)} / {state.glucoseReal > 250 ? '120' : '240'} min
+          </div>
+          <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+            <div style={{
+              height: '100%', borderRadius: 2,
+              width: `${Math.min(100, (state.hyperTime / (state.glucoseReal > 250 ? 120 : 240)) * 100)}%`,
+              background: 'var(--orange)', transition: 'width 0.4s'
+            }} />
+          </div>
+        </div>
+      )}
+
       {/* ── Glucosa principal ── */}
       <div style={{ textAlign: 'center', padding: '8px 0' }}>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase',
@@ -145,19 +204,9 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           label="Tasa Infusión Total"
           value={state.insulinRate.toFixed(2)}
           unit="U/h"
-          color={state.actuatorSaturated ? 'var(--red)' : 'var(--text-primary)'}
         />
         <MetricRow label="Tasa Basal" value={state.basalRate.toFixed(2)} unit="U/h" />
         <MetricRow label="Bolo Automático" value={state.bolusAmount.toFixed(2)} unit="U" color="var(--yellow)" />
-        <div className="metric-item" style={state.actuatorSaturated ? { borderColor: 'var(--red)' } : {}}>
-          <span className="metric-label">Saturación</span>
-          <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: state.actuatorSaturated ? 'var(--red)' : 'var(--green)',
-          }}>
-            {state.actuatorSaturated ? '⚠ SATURADO' : '✓ Normal'}
-          </span>
-        </div>
       </div>
 
       <div className="divider" />
@@ -252,7 +301,7 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           } else if (state.systemState === 'in_band') {
             stateColor = 'var(--yellow)';
             stateLabel = '🟡 EN BANDA DE TOLERANCIA';
-            stateDesc = `Transitorio. Estabilizando (${state.stableTime.toFixed(0)} / 20 min).`;
+            stateDesc = `Transitorio. Estabilizando (${state.stableTime.toFixed(0)} / 10 min).`;
           } else {
             stateColor = 'var(--red)';
             stateLabel = '🔴 FUERA DE BANDA';

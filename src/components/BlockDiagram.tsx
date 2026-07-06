@@ -42,21 +42,19 @@ function Arrow({ color = 'var(--cyan)', label = '', animating = true }: {
 
 // ── Bloque individual del diagrama ──────────────────────────
 function Block({
-  icon, label, value, color, active = false, saturated = false,
+  icon, label, value, color, active = false,
 }: {
   icon: string;
   label: string;
   value?: string;
   color: string;
   active?: boolean;
-  saturated?: boolean;
 }) {
   return (
     <div
       className={`ctrl-block ${active ? 'active' : ''}`}
       style={{ color, borderColor: active ? color : undefined }}
     >
-      {saturated && <div className="saturation-indicator">!</div>}
       <div className="ctrl-block-icon">{icon}</div>
       <div className="ctrl-block-label" style={{ color }}>{label}</div>
       {value && <div className="ctrl-block-value">{value}</div>}
@@ -143,9 +141,8 @@ export function BlockDiagram({ state, running }: BlockDiagramProps) {
           icon="⚡"
           label="Actuador"
           value={`${state.insulinRate.toFixed(2)} U/h`}
-          color={state.actuatorSaturated ? 'var(--red)' : 'var(--purple)'}
+          color="var(--purple)"
           active={isAnimating}
-          saturated={state.actuatorSaturated}
         />
 
         <Arrow color="var(--purple)" label="I(t)" animating={isAnimating} />

@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 
 import type { SimulationState, SimConfig, DataPoint, PerturbationType } from './types/simulation';
-import { PERTURBATION_EXPLANATIONS } from './engine/config';
 
 export interface BolusEvent { time: number; amount: number; }
 
@@ -13,7 +12,7 @@ import { Header } from './components/Header';
 import { BlockDiagram } from './components/BlockDiagram';
 import { MetricsPanel } from './components/MetricsPanel';
 import { ControlsPanel } from './components/ControlsPanel';
-import { PerturbationsPanel, PerturbationNotification } from './components/PerturbationsPanel';
+import { PerturbationsPanel } from './components/PerturbationsPanel';
 import { UnifiedChart } from './components/Charts';
 
 const WS_URL = 'ws://localhost:8080/ws';
@@ -54,7 +53,9 @@ export default function App() {
     sensorNoise: 0, sensorReading: 180, lastSensorUpdate: 0,
     bleConnected: true, blePacketLoss: 0.02, bleDelay: 50, lastValidReading: 180,
     perturbations: [], systemState: 'out_of_band', stableTime: 0,
-    timeSinceLastDisturbance: 0, transientTime: 0, lastTransientTime: 0, alarms: [],
+    timeSinceLastDisturbance: 0, transientTime: 0, lastTransientTime: 0,
+    hypoTime: 0, hyperTime: 0, systemFailure: false, failureReason: '',
+    alarms: [],
     metrics: { iae: 0, ise: 0, itae: 0, maxError: 80, overshoot: 0, timeInRange: 0, timeOutOfRange: 0, steadyStateError: 80, settlingTime: null, riseTime: null, recoveryTime: null },
   });
   // Solo se guarda la ventana actual visible (80 puntos procesados en el backend)
@@ -64,7 +65,6 @@ export default function App() {
 
   const [running, setRunning]   = useState(false);
   const [timeScale, setTimeScale] = useState(1);
-  const [notification, setNotification] = useState<PerturbationType | null>(null);
   const [viewOffset, setViewOffset] = useState(0);
   const [connected, setConnected] = useState(false);
 
@@ -158,7 +158,6 @@ export default function App() {
 
   function handleReset() {
     setRunning(false);
-    setNotification(null);
     setBolusEvents([]);
     send('reset', { setpoint: config.setpoint, initialGlucose: config.initialGlucose });
     setViewOffset(0);
@@ -177,16 +176,14 @@ export default function App() {
     }
   }
 
-  function handlePerturbation(type: PerturbationType) {
+  function handlePerturbation(type: PerturbationType, duration?: number) {
     send('perturbation', {
       type,
       magnitude:   PERTURBATION_MAGNITUDES[type],
       startTime:   simStateRef.current.time,
-      duration:    PERTURBATION_DURATIONS[type],
-      description: PERTURBATION_EXPLANATIONS.find(p => p.type === type)?.title ?? type,
+      duration:    duration ?? PERTURBATION_DURATIONS[type],
+      description: type,
     });
-    setNotification(type);
-    setTimeout(() => setNotification(null), 8000);
   }
 
   return (
@@ -281,11 +278,6 @@ export default function App() {
           </div>
         </div>
       </div>
-
-      <PerturbationNotification
-        perturbationType={notification}
-        onClose={() => setNotification(null)}
-      />
     </div>
   );
 }

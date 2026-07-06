@@ -454,7 +454,62 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		m.RiseTime = &v
 	}
 
-	// 10) Alarmas
+	// 10) Deteción de Falla del Sistema
+	// Umbrales clínicos: el organismo (carga del control) ya es afectado cuando el
+	// desvio se sostiene el tiempo suficiente para generar un efecto fisiológico real.
+	//
+	// HIPOGLUCEMIA (G < 70 mg/dL):
+	//   La glucosa cerebral empieza a disminuir a los 5 min, pero los síntomas
+	//   neuroglucopénicos clínicamente significativos aparecen entre los 10-20 min.
+	//   Umbral académico: 15 minutos continuos.
+	//
+	// HIPERGLUCEMIA SEVERA (G > 250 mg/dL):
+	//   Riesgo de cetoacidosis y daño microvascular acelerado. Sintomático
+	//   (fatiga, poliuria) en 1-2 horas. Umbral: 120 minutos continuos.
+	//
+	// HIPERGLUCEMIA MODERADA (G > 180 mg/dL):
+	//   Daño endotelial sostenido, síntomas leves. Umbral: 240 minutos (4 horas).
+	const (
+		hypoFailureThreshold      = 15.0  // min: inicio de neuroglucopenia
+		hyperSevereThreshold      = 250.0 // mg/dL: zona de cetoacidosis
+		hyperModerateThreshold    = 180.0 // mg/dL: daño microvascular
+		hyperSevereFailureMin     = 120.0 // min continuos en >250
+		hyperModerateFailureMin   = 240.0 // min continuos en >180
+	)
+
+	hypoTime := state.HypoTime
+	hyperTime := state.HyperTime
+
+	if newGlucose < 70.0 {
+		hypoTime += dt
+	} else {
+		hypoTime = 0 // se resetea al salir de la zona de hipoglucemia
+	}
+
+	if newGlucose > hyperModerateThreshold {
+		hyperTime += dt
+	} else {
+		hyperTime = 0 // se resetea al volver a rango aceptable
+	}
+
+	// La falla una vez declarada es permanente (el organismo ya fue afectado)
+	systemFailure := state.SystemFailure
+	failureReason := state.FailureReason
+
+	if !systemFailure {
+		if hypoTime >= hypoFailureThreshold {
+			systemFailure = true
+			failureReason = "FALLA: Hipoglucemia sostenida >15 min – Neuroglucopenia cerebral establecida"
+		} else if newGlucose > hyperSevereThreshold && hyperTime >= hyperSevereFailureMin {
+			systemFailure = true
+			failureReason = "FALLA: Hiperglucemia severa (>250) sostenida >2 h – Riesgo de cetoacidosis"
+		} else if hyperTime >= hyperModerateFailureMin {
+			systemFailure = true
+			failureReason = "FALLA: Hiperglucemia moderada (>180) sostenida >4 h – Daño microvascular acumulado"
+		}
+	}
+
+	// 11) Alarmas
 	alarms := []string{}
 	if newGlucose < 70 {
 		alarms = append(alarms, "HIPOGLUCEMIA")
@@ -516,6 +571,10 @@ func (e *Engine) Step(state SimulationState, cfg SimConfig) SimulationState {
 		TimeSinceLastDisturbance: timeSinceLastDisturbance,
 		TransientTime:            transientTime,
 		LastTransientTime:        lastTransientTime,
+		HypoTime:                 hypoTime,
+		HyperTime:                hyperTime,
+		SystemFailure:            systemFailure,
+		FailureReason:            failureReason,
 		Alarms:                   alarms,
 		Metrics:                  m,
 	}

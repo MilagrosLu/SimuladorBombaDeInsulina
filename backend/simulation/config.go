@@ -44,7 +44,7 @@ func DefaultConfig() SimConfig {
 		MaxInsulinRate:       12.0, // Permite acción de control agresiva
 		MinInsulinRate:       0.0,
 		BasalRate:            0.8,  // tasa basal de fondo [U/h]
-		SensorNoiseLevel:     8,    // Guardian 4 σ≈8 mg/dL
+		SensorNoiseLevel:     1,    // Guardian 4 σ≈8 mg/dL
 		SensorUpdateInterval: 5,    // CGM: actualización cada 5 min
 		TimeScale:            1,
 	}

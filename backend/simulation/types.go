@@ -100,6 +100,14 @@ type SimulationState struct {
 	TransientTime           float64 `json:"transientTime"`
 	LastTransientTime       float64 `json:"lastTransientTime"`
 
+	// Contadores de tiempo en zona de falla (minutos continuos)
+	HypoTime  float64 `json:"hypoTime"`  // min continuos con glucosa < 70 mg/dL
+	HyperTime float64 `json:"hyperTime"` // min continuos con glucosa > 180 mg/dL
+
+	// Falla del sistema: cuando el organismo ya sufre el efecto del desvio
+	SystemFailure bool   `json:"systemFailure"`
+	FailureReason string `json:"failureReason"` // descripción clínica de la falla
+
 	Alarms  []string           `json:"alarms"`
 	Metrics PerformanceMetrics `json:"metrics"`
 }

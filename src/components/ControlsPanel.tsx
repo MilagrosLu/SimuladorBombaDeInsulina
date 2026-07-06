@@ -54,10 +54,6 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
     onConfigChange({ ...config, pid: { ...config.pid, [key]: value } });
   }
 
-  function updatePlant(key: keyof typeof config.plant, value: number) {
-    onConfigChange({ ...config, plant: { ...config.plant, [key]: value } });
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
@@ -159,92 +155,12 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
         <div style={{ marginTop: 10, padding: 8, background: 'var(--bg-input)', borderRadius: 6,
           border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-secondary)' }}>💡 Valores de referencia:</strong><br />
-          ✅ <strong style={{ color: 'var(--green)' }}>Estable:</strong> Kp=0.4, Ki=0.005, Kd=0.5<br />
+          ✅ <strong style={{ color: 'var(--green)' }}>Óptimo (actual):</strong> Kp=0.23, Ki=0.020, Kd=0.35<br />
           ⚠️ <strong style={{ color: 'var(--yellow)' }}>Lento:</strong> Kp=0.04, Ki=0.003, Kd=0.1<br />
           🔴 <strong style={{ color: 'var(--red)' }}>Inestable:</strong> Kp=0.8, Ki=0.015, Kd=0.0
-        </div>
-      </section>
-
-      <div className="divider" />
-
-
-
-      {/* ── Sensor ── */}
-      <section>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '0.08em', color: 'var(--green)', marginBottom: 10 }}>
-          📡 Sensor Guardian 4
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Slider
-            id="sensorNoise"
-            label="Ruido del sensor (σ)"
-            value={config.sensorNoiseLevel}
-            min={0}
-            max={20}
-            step={0.5}
-            onChange={v => onConfigChange({ ...config, sensorNoiseLevel: v })}
-            color="var(--green)"
-            description="Desviación estándar del ruido gaussiano del sensor intersticial."
-          />
-          <Slider
-            id="sensorInterval"
-            label="Intervalo de medición"
-            value={config.sensorUpdateInterval}
-            min={1}
-            max={10}
-            step={1}
-            onChange={v => onConfigChange({ ...config, sensorUpdateInterval: v })}
-            color="var(--green)"
-            description="Cada cuántos minutos el sensor reporta un nuevo valor (real: 5 min)."
-          />
-        </div>
-      </section>
-
-      <div className="divider" />
-
-      {/* ── Planta ── */}
-      <section>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '0.08em', color: 'var(--orange)', marginBottom: 10 }}>
-          🧬 Parámetros de la Planta
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Slider
-            id="tauSubQ"
-            label="τ absorción subcutánea"
-            value={config.plant.subcutaneousTimeConstant}
-            min={5}
-            max={60}
-            step={1}
-            onChange={v => updatePlant('subcutaneousTimeConstant', v)}
-            color="var(--orange)"
-            description="Constante de tiempo del tejido subcutáneo (proceso 1)."
-          />
-          <Slider
-            id="tauMeta"
-            label="τ metabolismo (inercia)"
-            value={config.plant.metabolismTimeConstant}
-            min={20}
-            max={120}
-            step={5}
-            onChange={v => updatePlant('metabolismTimeConstant', v)}
-            color="var(--orange)"
-            description="Inercia del metabolismo de glucosa (proceso 2). Mayor = respuesta más lenta."
-          />
-          <Slider
-            id="sensitivity"
-            label="Sensibilidad a insulina"
-            value={config.plant.glucoseSensitivity}
-            min={5}
-            max={80}
-            step={1}
-            onChange={v => updatePlant('glucoseSensitivity', v)}
-            color="var(--yellow)"
-            description="Caída de glucosa por unidad de insulina en plasma (mg/dL / U)."
-          />
         </div>
       </section>
     </div>
   );
 }
+

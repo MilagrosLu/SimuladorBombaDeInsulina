@@ -1,11 +1,14 @@
 // ============================================================
 // PANEL DE PERTURBACIONES – Botones de eventos del sistema
 // ============================================================
+import { useState } from 'react';
 import type { PerturbationType } from '../types/simulation';
-import { PERTURBATION_EXPLANATIONS } from '../engine/config';
+
+// Duraciones configurables solo para perturbaciones de fallo técnico
+const CONFIGURABLE_DURATION_TYPES: PerturbationType[] = ['occlusion', 'ble_interference', 'sensor_noise'];
 
 interface PerturbationsPanelProps {
-  onPerturbation: (type: PerturbationType) => void;
+  onPerturbation: (type: PerturbationType, duration?: number) => void;
   activePerturbations: { type: PerturbationType }[];
 }
 
@@ -66,6 +69,20 @@ function PerturbButton({ icon, label, sublabel, color, active, onClick }: Pertur
 export function PerturbationsPanel({ onPerturbation, activePerturbations }: PerturbationsPanelProps) {
   const activeTypes = new Set(activePerturbations.map(p => p.type));
 
+  // Estado de duración personalizada para cada tipo configurable (en minutos)
+  const [customDurations, setCustomDurations] = useState<Record<string, number>>({
+    occlusion: 30,
+    ble_interference: 20,
+    sensor_noise: 25,
+  });
+
+  const fmtDuration = (mins: number) => {
+    if (mins < 60) return `${mins}m`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m === 0 ? `${h}h` : `${h}h${m}m`;
+  };
+
   const buttons: Array<{
     type: PerturbationType;
     icon: string;
@@ -101,22 +118,21 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
       },
       {
         type: 'occlusion', icon: '🚫',
-        label: 'Oclusión de Cánula', sublabel: 'Insulina no llega · error crece',
+        label: 'Oclusión de Cánula', sublabel: 'Insulina bloqueada · insulina inyectada = 0',
         color: '#dc2626', section: 'Fallos',
       },
       {
         type: 'ble_interference', icon: '📵',
-        label: 'Interferencia BLE', sublabel: 'Pérdida de comunicación',
+        label: 'Interferencia BLE', sublabel: 'Pérdida de comunicación con sensor',
         color: '#6366f1', section: 'Fallos',
       },
       {
         type: 'sensor_noise', icon: '📉',
-        label: 'Ruido del Sensor', sublabel: 'Medición errática → D oscila',
+        label: 'Ruido del Sensor', sublabel: 'Medición errática → término D oscila',
         color: '#64748b', section: 'Fallos',
       },
     ];
 
-  // Agrupar por sección
   const sections = ['Comidas', 'Fisiología', 'Fallos'];
 
   return (
@@ -136,15 +152,45 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
             }}>
               {section === 'Comidas' ? '🍴' : section === 'Fisiología' ? '🧬' : '⚠️'} {section}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sectionBtns.map(b => (
-                <PerturbButton
-                  key={b.type}
-                  {...b}
-                  active={activeTypes.has(b.type)}
-                  onClick={() => onPerturbation(b.type)}
-                />
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {sectionBtns.map(b => {
+                const isConfigurable = CONFIGURABLE_DURATION_TYPES.includes(b.type);
+                return (
+                  <div key={b.type}>
+                    <PerturbButton
+                      {...b}
+                      active={activeTypes.has(b.type)}
+                      onClick={() => onPerturbation(b.type, isConfigurable ? customDurations[b.type] : undefined)}
+                    />
+                    {/* Control de duración solo para fallos técnicos */}
+                    {isConfigurable && (
+                      <div style={{
+                        marginTop: 4, paddingLeft: 8,
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          Duración:
+                        </span>
+                        <input
+                          type="range"
+                          min={5} max={2880} step={15}
+                          value={customDurations[b.type]}
+                          onChange={e => setCustomDurations(prev => ({
+                            ...prev, [b.type]: parseInt(e.target.value)
+                          }))}
+                          style={{
+                            flex: 1, accentColor: b.color, cursor: 'pointer',
+                            background: `linear-gradient(90deg, ${b.color}88 ${((customDurations[b.type] - 5) / 2875) * 100}%, var(--bg-input) 0%)`,
+                          }}
+                        />
+                        <span style={{ fontSize: 10, color: b.color, fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
+                          {fmtDuration(customDurations[b.type])}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
@@ -155,59 +201,12 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
         border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6,
         marginTop: 4,
       }}>
-        💡 Las perturbaciones tienen una duración limitada y se eliminan automáticamente.
-        Puede activar varias simultáneamente para simular escenarios complejos.
+        💡 Las perturbaciones de <strong style={{ color: 'var(--yellow)' }}>comida</strong> y <strong style={{ color: 'var(--green)' }}>fisiología</strong> tienen duración fija.
+        Las de <strong style={{ color: 'var(--red)' }}>fallos técnicos</strong> permiten configurar la duración.
       </div>
     </div>
   );
 }
 
-// ── Notificación explicativa de perturbación ─────────────────
-interface PerturbationNotificationProps {
-  perturbationType: PerturbationType | null;
-  onClose: () => void;
-}
-
-export function PerturbationNotification({ perturbationType, onClose }: PerturbationNotificationProps) {
-  if (!perturbationType) return null;
-
-  const info = PERTURBATION_EXPLANATIONS.find(p => p.type === perturbationType);
-  if (!info) return null;
-
-  return (
-    <div className="notification">
-      <div className="notification-card" style={{ borderLeftColor: info.color }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div className="notification-title" style={{ color: info.color }}>
-            ⚡ {info.title}
-          </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="notification-body">
-          <div className="notification-section">
-            <div className="notification-section-label">🔬 Fisiología</div>
-            <div>{info.physiology}</div>
-          </div>
-          <div className="notification-section">
-            <div className="notification-section-label">📊 Señal afectada</div>
-            <div>{info.signalChanged}</div>
-          </div>
-          <div className="notification-section">
-            <div className="notification-section-label">⚙️ Respuesta PID</div>
-            <div>{info.pidResponse}</div>
-          </div>
-          <div className="notification-section">
-            <div className="notification-section-label">📈 Evolución del error</div>
-            <div>{info.errorEvolution}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// Componente vacío para compatibilidad con imports existentes
+export function PerturbationNotification() { return null; }

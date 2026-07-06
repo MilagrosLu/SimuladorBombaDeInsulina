@@ -108,18 +108,57 @@ export function Header({
         ⏱ {formatTime(state.time)}
       </div>
 
-      {/* ── Velocidad ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Vel:</span>
-        {[1, 2, 4, 8].map(v => (
-          <button
-            key={v}
-            className={`btn btn-sm ${timeScale === v ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => onTimeScaleChange(v)}
-          >
-            {v}×
-          </button>
-        ))}
+      {/* ── Velocidad + relación tiempo real/simulado ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+
+        {/* Botones rápidos */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Vel:</span>
+          {[1, 2, 4, 8].map(v => (
+            <button
+              key={v}
+              className={`btn btn-sm ${timeScale === v ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => onTimeScaleChange(v)}
+            >
+              {v}×
+            </button>
+          ))}
+          {/* Input de valor personalizado */}
+          <input
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            value={timeScale}
+            onChange={e => {
+              const v = Math.max(1, Math.min(100, parseFloat(e.target.value) || 1));
+              onTimeScaleChange(v);
+            }}
+            title="Multiplicador de velocidad personalizado"
+            style={{
+              width: 48, padding: '2px 4px', borderRadius: 4,
+              background: 'var(--bg-input)', border: '1px solid var(--border)',
+              color: 'var(--cyan)', fontFamily: 'var(--font-mono)', fontSize: 11,
+              textAlign: 'center',
+            }}
+          />
+        </div>
+
+        {/* Relación tiempo real ↔ simulado */}
+        <div style={{
+          fontSize: 10, color: 'var(--text-muted)',
+          background: 'var(--bg-input)', border: '1px solid var(--border)',
+          borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap',
+        }}>
+          <span style={{ color: 'var(--text-secondary)' }}>1 seg real</span>
+          {' = '}
+          <span style={{ color: 'var(--cyan)', fontWeight: 700 }}>
+            {(timeScale * 5) >= 60
+              ? `${((timeScale * 5) / 60).toFixed(1)} h`
+              : `${timeScale * 5} min`}
+          </span>
+          {' simulados'}
+        </div>
       </div>
 
       {/* ── Controles de simulación ── */}

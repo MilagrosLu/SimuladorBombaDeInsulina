@@ -59,8 +59,17 @@ export interface SimulationState {
   transientTime: number;
   lastTransientTime: number;
 
+  // Tiempo continuo en zona de falla
+  hypoTime: number;   // minutos continuos con glucosa < 70 mg/dL
+  hyperTime: number;  // minutos continuos con glucosa > 180 mg/dL
+
+  // Falla del sistema (permanente una vez declarada)
+  systemFailure: boolean;
+  failureReason: string;
+
   // Alarmas
   alarms: string[];
+
 
   // Métricas de desempeño de control
   metrics: {

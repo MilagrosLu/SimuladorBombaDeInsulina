@@ -68,7 +68,18 @@ const getCommonOptions = (yMin?: number, yMax?: number, hideX = true): any => ({
       align: 'start',
       labels: { color: '#a0aec0', boxWidth: 8, font: { size: 10 } }
     },
-    tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', titleColor: '#38bdf8' },
+    tooltip: {
+      backgroundColor: 'rgba(15,23,42,0.9)',
+      titleColor: '#38bdf8',
+      callbacks: {
+        title: (items: any[]) => {
+          if (!items.length) return '';
+          const label = items[0].label as string;
+          // label ya está en hh:mm
+          return `⏱ ${label}`;
+        }
+      }
+    },
   },
   scales: {
     x: {
@@ -110,7 +121,15 @@ function lineAnnotation(y: number, color: string, label: string, dash = [4, 4]):
 // ============================================================
 export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBuffered, viewOffset, onViewChange, bolusEvents }: any) {
   const bolusList: { time: number; amount: number }[] = bolusEvents || [];
-  const labels = useMemo(() => data.map((p: DataPoint) => p.time.toFixed(1)), [data]);
+
+  // Convertir minutos a formato hh:mm para etiquetas y tooltips
+  const toHHMM = (minutes: number) => {
+    const h = Math.floor(minutes / 60);
+    const m = Math.floor(minutes % 60);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  };
+
+  const labels = useMemo(() => data.map((p: DataPoint) => toHHMM(p.time)), [data]);
 
   const glucoseDomain = useMemo(() => {
     if (data.length === 0) return { min: 60, max: 200 };
@@ -258,7 +277,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
   }, [perturbDomain, hasAny]);
 
   // ── PANEL 5: Insulina ──
-  const data5 = {
+  const data5 = useMemo(() => ({
     labels,
     datasets: [
       {
@@ -270,7 +289,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       },
       {
         type: 'line' as const,
-        label: 'Basal',
+        label: 'Basal PID',
         data: data.map((p: DataPoint) => p.basalRate || 0),
         borderColor: '#0891b2',
         borderWidth: 1.5,
@@ -280,14 +299,15 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       },
       {
         type: 'line' as const,
-        label: 'Total (Basal+Bolo)',
-        data: data.map((p: DataPoint) => p.insulinRate || 0),
+        label: 'Insulina Inyectada',
+        // Con oclusión activa (perturbOcclusion > 0) la insulina no llega: mostrar 0
+        data: data.map((p: DataPoint) => p.perturbOcclusion > 0 ? 0 : (p.insulinRate || 0)),
         borderColor: '#22d3ee',
         borderWidth: 2,
         stepped: 'before' as const
       }
     ]
-  };
+  }), [data, labels]);
   const options5 = useMemo(() => {
     const opt = getCommonOptions(insulinDomain.min, insulinDomain.max, false);
     // Anotaciones de bolos: una línea vertical naranja por cada evento
