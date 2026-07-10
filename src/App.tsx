@@ -70,6 +70,16 @@ export default function App() {
   const [timeScale, setTimeScale] = useState(1);
   const [viewOffset, setViewOffset] = useState(0);
   const [connected, setConnected] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+
+  // Aplicar/quitar clase 'light' en el elemento :root
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+    }
+  }, [darkMode]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const simStateRef = useRef(simState);
@@ -217,10 +227,12 @@ export default function App() {
         config={config}
         running={running}
         timeScale={timeScale}
+        darkMode={darkMode}
         onPlay={handlePlay}
         onPause={handlePause}
         onReset={handleReset}
         onTimeScaleChange={handleTimeScale}
+        onToggleTheme={() => setDarkMode(d => !d)}
       />
 
       <div className="app-body">
@@ -270,6 +282,7 @@ export default function App() {
               maxOffset={Math.max(0, totalBuffered - WINDOW_POINTS)}
               onViewChange={handleViewChange}
               bolusEvents={bolusEvents}
+              darkMode={darkMode}
             />
           </div>
         </div>

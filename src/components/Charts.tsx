@@ -36,17 +36,26 @@ ChartJS.register(
 );
 
 const CHART_H = 120;
-const panelBase: React.CSSProperties = {
-  background: 'rgba(15, 23, 42, 0.4)',
-  borderBottom: '1px solid var(--border)',
-  padding: '8px 12px 12px',
-  position: 'relative'
-};
+
+// Lee una variable CSS del :root para pasar al chart.js
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function getPanelBase(): React.CSSProperties {
+  return {
+    background: cssVar('--chart-panel-bg') || 'rgba(15, 23, 42, 0.4)',
+    borderBottom: '1px solid var(--border)',
+    padding: '8px 12px 12px',
+    position: 'relative',
+    transition: 'background 0.4s ease',
+  };
+}
 
 function SubLabel({ title, badge, badgeColor, badgeBg }: any) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', letterSpacing: 0.5 }}>{title}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: 0.5 }}>{title}</div>
       <div style={{
         fontSize: 10, fontWeight: 700, padding: '2px 6px',
         borderRadius: 4, color: badgeColor, background: badgeBg
@@ -55,7 +64,7 @@ function SubLabel({ title, badge, badgeColor, badgeBg }: any) {
   );
 }
 
-// ── Opciones Comunes ──────────────────────────────────────────
+// ── Opciones Comunes ──────────────────────────────────────────────────
 const getCommonOptions = (yMin?: number, yMax?: number, hideX = true): any => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -66,16 +75,16 @@ const getCommonOptions = (yMin?: number, yMax?: number, hideX = true): any => ({
     legend: {
       position: 'top',
       align: 'start',
-      labels: { color: '#a0aec0', boxWidth: 8, font: { size: 10 } }
+      labels: { color: cssVar('--chart-legend') || '#a0aec0', boxWidth: 8, font: { size: 10 } }
     },
     tooltip: {
-      backgroundColor: 'rgba(15,23,42,0.9)',
-      titleColor: '#38bdf8',
+      backgroundColor: cssVar('--chart-tooltip-bg') || 'rgba(15,23,42,0.9)',
+      titleColor: cssVar('--cyan') || '#38bdf8',
+      bodyColor: cssVar('--text-primary') || '#e8eeff',
       callbacks: {
         title: (items: any[]) => {
           if (!items.length) return '';
           const label = items[0].label as string;
-          // label ya está en hh:mm
           return `⏱ ${label}`;
         }
       }
@@ -85,15 +94,15 @@ const getCommonOptions = (yMin?: number, yMax?: number, hideX = true): any => ({
     x: {
       type: 'category',
       display: !hideX,
-      grid: { color: 'rgba(30,45,77,0.5)' },
-      ticks: { color: '#718096', maxTicksLimit: 10 }
+      grid: { color: cssVar('--chart-grid') || 'rgba(30,45,77,0.5)' },
+      ticks: { color: cssVar('--chart-tick') || '#718096', maxTicksLimit: 10 }
     },
     y: {
       type: 'linear',
       min: yMin,
       max: yMax,
-      grid: { color: 'rgba(30,45,77,0.5)' },
-      ticks: { color: '#718096', font: { size: 10 } }
+      grid: { color: cssVar('--chart-grid') || 'rgba(30,45,77,0.5)' },
+      ticks: { color: cssVar('--chart-tick') || '#718096', font: { size: 10 } }
     }
   }
 });
@@ -119,8 +128,9 @@ function lineAnnotation(y: number, color: string, label: string, dash = [4, 4]):
 // ============================================================
 // COMPONENTE PRINCIPAL
 // ============================================================
-export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBuffered, viewOffset, onViewChange, bolusEvents }: any) {
+export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBuffered, viewOffset, onViewChange, bolusEvents, darkMode }: any) {
   const bolusList: { time: number; amount: number }[] = bolusEvents || [];
+  const panelBase = getPanelBase();
 
   // Convertir minutos a formato hh:mm para etiquetas y tooltips
   const toHHMM = (minutes: number) => {
@@ -165,6 +175,32 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
     return { min: 0, max: hi };
   }, [data]);
 
+  // Colores de datasets: oscuros en dark mode, saturados en light mode
+  const C = darkMode ? {
+    cyan:    '#00d4ff',
+    green:   '#22d3a6',
+    red:     '#f43f5e',
+    purple:  '#a855f7',
+    orange:  '#f97316',
+    lime:    '#84cc16',
+    indigo:  '#6366f1',
+    sky:     '#0891b2',
+    orangeA: 'rgba(251,146,60,0.55)',
+    skyA:    'rgba(8,145,178,0.18)',
+  } : {
+    // Modo claro: mismos tonos, más oscuros y saturados
+    cyan:    '#0369a1',  // azul intenso sobre blanco
+    green:   '#047857',  // verde oscuro
+    red:     '#b91c1c',  // rojo fuerte
+    purple:  '#6d28d9',  // violeta profundo
+    orange:  '#c2410c',  // naranja quemado
+    lime:    '#4d7c0f',  // verde lima oscuro
+    indigo:  '#3730a3',  // azul índigo oscuro
+    sky:     '#075985',  // azul cielo profundo
+    orangeA: 'rgba(194,65,12,0.65)',
+    skyA:    'rgba(7,89,133,0.18)',
+  };
+
   // ── PANEL 1: Glucosa ──
   const data1 = {
     labels,
@@ -172,7 +208,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       {
         label: `Setpoint (${setpoint})`,
         data: data.map((p: DataPoint) => p.setpoint),
-        borderColor: '#00d4ff', // cyan
+        borderColor: C.cyan,
         borderWidth: 2,
         borderDash: [7, 3],
         stepped: 'before' as const
@@ -180,7 +216,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       {
         label: 'Salida Proceso',
         data: data.map((p: DataPoint) => p.glucoseReal),
-        borderColor: '#22d3a6', // green
+        borderColor: C.green,
         borderWidth: 2,
         tension: 0.4
       }
@@ -195,7 +231,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       }
     };
     return opt;
-  }, [glucoseDomain]);
+  }, [glucoseDomain, darkMode]);
 
   // ── PANEL 2: Sensor ──
   const data2 = {
@@ -204,7 +240,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       {
         label: 'Medición Sensor',
         data: data.map((p: DataPoint) => p.glucoseMeasured),
-        borderColor: '#00d4ff', // celeste
+        borderColor: C.cyan,
         borderWidth: 1.5,
         borderDash: [5, 2],
         tension: 0.4
@@ -217,7 +253,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       annotations: { sp: lineAnnotation(setpoint, '#00d4ff', 'SP', [6,3]) }
     };
     return opt;
-  }, [glucoseDomain, setpoint]);
+  }, [glucoseDomain, setpoint, darkMode]);
 
   // ── PANEL 3: Error ──
   const data3 = {
@@ -226,7 +262,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       {
         label: 'Error e(t)',
         data: data.map((p: DataPoint) => p.error),
-        borderColor: '#f43f5e', // red
+        borderColor: C.red,
         borderWidth: 2,
         tension: 0.4
       }
@@ -242,7 +278,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       }
     };
     return opt;
-  }, [errorDomain]);
+  }, [errorDomain, darkMode]);
 
   // ── PANEL 4: Perturbaciones ──
   const { hasMeal, hasStress, hasExercise, hasOccl, hasBLE, hasAny } = useMemo(() => ({
@@ -258,12 +294,12 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
     ),
   }), [data]);
 
-  const datasets4 = [];
-  if (hasMeal) datasets4.push({ label: 'Comida', data: data.map((p: DataPoint) => p.perturbMeal), borderColor: '#f97316', tension: 0.4 });
-  if (hasStress) datasets4.push({ label: 'Estrés', data: data.map((p: DataPoint) => p.perturbStress), borderColor: '#a855f7', tension: 0.4 });
-  if (hasExercise) datasets4.push({ label: 'Ejercicio', data: data.map((p: DataPoint) => p.perturbExercise), borderColor: '#84cc16', tension: 0.4 });
-  if (hasOccl) datasets4.push({ label: 'Oclusión', data: data.map((p: DataPoint) => p.perturbOcclusion), borderColor: '#ef4444', stepped: 'before' as const });
-  if (hasBLE) datasets4.push({ label: 'BLE', data: data.map((p: DataPoint) => p.perturbBLE), borderColor: '#6366f1', stepped: 'before' as const });
+  const datasets4: any[] = [];
+  if (hasMeal)    datasets4.push({ label: 'Comida',   data: data.map((p: DataPoint) => p.perturbMeal),      borderColor: C.orange,  tension: 0.4 });
+  if (hasStress)  datasets4.push({ label: 'Estrés',   data: data.map((p: DataPoint) => p.perturbStress),    borderColor: C.purple,  tension: 0.4 });
+  if (hasExercise)datasets4.push({ label: 'Ejercicio', data: data.map((p: DataPoint) => p.perturbExercise),  borderColor: C.lime,    tension: 0.4 });
+  if (hasOccl)    datasets4.push({ label: 'Oclusión',  data: data.map((p: DataPoint) => p.perturbOcclusion), borderColor: C.red,     stepped: 'before' as const });
+  if (hasBLE)     datasets4.push({ label: 'BLE',       data: data.map((p: DataPoint) => p.perturbBLE),       borderColor: C.indigo,  stepped: 'before' as const });
 
   const data4 = { labels, datasets: datasets4 };
   const options4 = useMemo(() => {
@@ -274,7 +310,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       }
     };
     return opt;
-  }, [perturbDomain, hasAny]);
+  }, [perturbDomain, hasAny, darkMode]);
 
   // ── PANEL 5: Insulina ──
   const data5 = useMemo(() => {
@@ -302,34 +338,33 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
           type: 'bar' as const,
           label: 'Bolo',
           data: bolusData,
-          backgroundColor: 'rgba(251,146,60,0.55)',
+          backgroundColor: C.orangeA,
           barThickness: 5
         },
-      {
-        type: 'line' as const,
-        label: 'Basal PID',
-        data: data.map((p: DataPoint) => p.basalRate || 0),
-        borderColor: '#0891b2',
-        borderWidth: 1.5,
-        borderDash: [4, 4], // Punteado para que se vea la Insulina Inyectada debajo
-        backgroundColor: 'rgba(8,145,178,0.18)',
-        fill: true,
-        stepped: 'before' as const
-      },
-      {
-        type: 'line' as const,
-        label: 'Insulina Inyectada',
-        data: data.map((p: DataPoint, i: number) => (p.insulinRate || 0) + bolusData[i]),
-        borderColor: '#a855f7', // Violeta llamativo en lugar del celeste original
-        borderWidth: 2,
-        stepped: 'before' as const
-      }
-    ]
-  };
-  }, [data, labels, bolusList]);
+        {
+          type: 'line' as const,
+          label: 'Basal PID',
+          data: data.map((p: DataPoint) => p.basalRate || 0),
+          borderColor: C.sky,
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          backgroundColor: C.skyA,
+          fill: true,
+          stepped: 'before' as const
+        },
+        {
+          type: 'line' as const,
+          label: 'Insulina Inyectada',
+          data: data.map((p: DataPoint, i: number) => (p.insulinRate || 0) + bolusData[i]),
+          borderColor: C.purple,
+          borderWidth: 2,
+          stepped: 'before' as const
+        }
+      ]
+    };
+  }, [data, labels, bolusList, darkMode]);
   const options5 = useMemo(() => {
     const opt = getCommonOptions(insulinDomain.min, insulinDomain.max, false);
-    // Anotaciones de bolos: una línea vertical naranja por cada evento
     const bolusAnnotations: Record<string, any> = {};
     bolusList.forEach((b, i) => {
       bolusAnnotations[`bolo_${i}`] = {
@@ -352,11 +387,11 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
     });
     opt.plugins!.annotation = { annotations: bolusAnnotations };
     return opt;
-  }, [insulinDomain, bolusList]);
+  }, [insulinDomain, bolusList, darkMode]);
 
   // ── UI ──
   return (
-    <div>
+    <div style={{ background: 'var(--bg-base)', transition: 'background 0.4s ease' }}>
       <div style={panelBase}>
         <SubLabel title="① Salida del Proceso" badge="mg/dL" badgeColor="var(--green)" badgeBg="rgba(34,211,166,0.12)" />
         <div style={{ height: CHART_H }}><Line data={data1} options={options1} /></div>
@@ -383,8 +418,8 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       </div>
 
       {/* Navegación manual de scroll al pasado */}
-      <div style={{ padding: '8px 12px', background: 'rgba(15,23,42,0.6)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>Navegar historial (Backend):</span>
+      <div style={{ padding: '8px 12px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', transition: 'background 0.4s ease' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Navegar historial (Backend):</span>
         <input
           type="range"
           min={0}
@@ -393,7 +428,7 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
           onChange={(e) => onViewChange?.(parseInt(e.target.value))}
           style={{ flex: 1 }}
         />
-        <span style={{ fontSize: 11, color: '#94a3b8', width: 80, textAlign: 'right' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 80, textAlign: 'right' }}>
           Offset: {viewOffset} pts
         </span>
       </div>

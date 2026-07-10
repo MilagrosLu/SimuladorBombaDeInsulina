@@ -69,8 +69,8 @@ function NumberInput({ label, value, onChange, color, description, step = 0.01 }
   };
 
   return (
-    <div className="slider-container" title={description} style={{ borderLeft: `3px solid ${color || 'var(--cyan)'}` }}>
-      <div className="slider-header" style={{ marginBottom: 4 }}>
+    <div className="slider-container" title={description} style={{ borderLeft: `3px solid ${color || 'var(--cyan)'}`, paddingLeft: 10 }}>
+      <div className="slider-header" style={{ marginBottom: 6 }}>
         <label>{label}</label>
       </div>
       <input

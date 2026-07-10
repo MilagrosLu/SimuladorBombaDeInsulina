@@ -9,10 +9,12 @@ interface HeaderProps {
   config: SimConfig;
   running: boolean;
   timeScale: number;
+  darkMode: boolean;
   onPlay: () => void;
   onPause: () => void;
   onReset: () => void;
   onTimeScaleChange: (v: number) => void;
+  onToggleTheme: () => void;
 }
 
 function formatTime(minutes: number): string {
@@ -30,8 +32,8 @@ function getGlucoseColor(g: number): string {
 }
 
 export function Header({
-  state, config, running, timeScale,
-  onPlay, onPause, onReset, onTimeScaleChange,
+  state, config, running, timeScale, darkMode,
+  onPlay, onPause, onReset, onTimeScaleChange, onToggleTheme,
 }: HeaderProps) {
   const stateLabel = state.systemState === 'stable' ? 'ESTABLE' : 'TRANSITORIO';
   const stateColor = state.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)';
@@ -167,6 +169,15 @@ export function Header({
         )}
         <button className="btn btn-danger" onClick={onReset} id="btn-reset">
           ↺ Reset
+        </button>
+        <button
+          className="btn-theme-toggle"
+          onClick={onToggleTheme}
+          id="btn-theme-toggle"
+          title={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        >
+          {darkMode ? '🌙' : '☀️'}
+          <span style={{ fontSize: 11 }}>{darkMode ? 'Oscuro' : 'Claro'}</span>
         </button>
       </div>
     </header>

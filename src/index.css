@@ -12,7 +12,7 @@
 }
 
 :root {
-  /* ── Paleta ──────────────────────────────── */
+  /* ── Paleta (MODO OSCURO – default) ──────── */
   --bg-base:       #0a0e1a;
   --bg-surface:    #0f1629;
   --bg-card:       #131d35;
@@ -61,6 +61,89 @@
   /* ── Transiciones ────────────────────────── */
   --transition: 150ms ease;
   --transition-slow: 400ms ease;
+
+  /* ── Chart colors (referencia para JS) ───── */
+  --chart-grid:    rgba(30,45,77,0.5);
+  --chart-tick:    #718096;
+  --chart-tooltip-bg: rgba(15,23,42,0.9);
+  --chart-legend:  #a0aec0;
+  --chart-panel-bg: rgba(15,23,42,0.4);
+}
+
+/* ── MODO CLARO ──────────────────────────────────────────────── */
+:root.light {
+  --bg-base:       #f0f4f8;
+  --bg-surface:    #e8edf4;
+  --bg-card:       #ffffff;
+  --bg-card-hover: #f5f8ff;
+  --bg-input:      #dde5f0;
+
+  --border:        #c8d4e8;
+  --border-light:  #a8bcda;
+
+  --text-primary:   #0a0f1e;
+  --text-secondary: #1e3a5f;  /* mucho más oscuro: era #3a5278 */
+  --text-muted:     #3d5a7a;  /* mucho más oscuro: era #8ba0be */
+
+  /* Acentos ajustados para fondo claro */
+  --cyan:    #0284c7;
+  --cyan-dim: #0369a1;
+  --blue:    #2563eb;
+  --blue-dim: #1d4ed8;
+  --green:   #059669;
+  --yellow:  #d97706;
+  --red:     #dc2626;
+  --purple:  #7c3aed;
+  --orange:  #ea580c;
+
+  --glucose-ok:   #059669;
+  --glucose-warn: #d97706;
+  --glucose-high: #dc2626;
+  --glucose-low:  #7c3aed;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
+  --shadow:    0 4px 16px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.15);
+
+  --chart-grid:    rgba(80,110,160,0.25);
+  --chart-tick:    #1e3a5f;  /* oscuro: era #64748b */
+  --chart-tooltip-bg: rgba(255,255,255,0.97);
+  --chart-legend:  #1e3a5f;  /* oscuro: era #475569 */
+  --chart-panel-bg: rgba(255,255,255,0.85);
+}
+
+/* ── Transición suave al cambiar de tema ───── */
+body, .header, .col-left, .col-right, .col-center,
+.card, .metric-item, .panel-header, .block-diagram-area {
+  transition: background-color var(--transition-slow),
+              border-color var(--transition-slow),
+              color var(--transition-slow);
+}
+
+/* ── Botón toggle de tema ───────────────────── */
+.btn-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.btn-theme-toggle:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--cyan) 30%, transparent);
 }
 
 html, body, #root {
