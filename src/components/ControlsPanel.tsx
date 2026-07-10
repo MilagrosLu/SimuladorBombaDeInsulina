@@ -105,7 +105,7 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
       <section>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.08em', color: 'var(--cyan)', marginBottom: 10 }}>
-          🎯 Entrada – Referencia
+          Entrada – Referencia
         </div>
         <Slider
           id="setpoint"
@@ -156,7 +156,7 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
       <section>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.08em', color: 'var(--blue)', marginBottom: 10 }}>
-          ⚙️ Controlador PID
+          Controlador PID
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

@@ -253,7 +253,7 @@ export default function App() {
             <>
               {/* ── Header con botón ocultar ── */}
               <div className="panel-header">
-                <span style={{ color: 'var(--cyan)' }}>📊</span>
+                <span style={{ color: 'var(--cyan)' }}></span>
                 <span className="panel-header-title">Estado del Sistema</span>
                 <button
                   onClick={() => setLeftCollapsed(true)}
@@ -279,7 +279,7 @@ export default function App() {
 
               {/* ── Separador + header Parámetros ── */}
               <div className="panel-header" style={{ borderTop: '1px solid var(--border)' }}>
-                <span style={{ color: 'var(--blue)' }}>🎛️</span>
+                <span style={{ color: 'var(--blue)' }}></span>
                 <span className="panel-header-title">Parámetros</span>
               </div>
 
@@ -296,8 +296,8 @@ export default function App() {
 
           {/* Diagrama de lazo cerrado (colapsable) */}
           <div className="diagram-header-bar">
-            <span style={{ color: 'var(--blue)', fontSize: 12 }}>🔗</span>
-            <span className="panel-header-title">Panel 1 — Diagrama de Lazo Cerrado</span>
+            <span style={{ color: 'var(--blue)', fontSize: 12 }}></span>
+            <span className="panel-header-title">Diagrama de Lazo Cerrado</span>
             <span
               className={`badge ${simState.systemState === 'stable' ? 'badge-stable' : 'badge-transient'}`}
               style={{ marginLeft: 8 }}
@@ -356,7 +356,7 @@ export default function App() {
             <>
               {/* Botón para colapsar la columna */}
               <div className="panel-header">
-                <span style={{ color: 'var(--yellow)' }}>⚡</span>
+                <span style={{ color: 'var(--yellow)' }}></span>
                 <span className="panel-header-title">Perturbaciones</span>
                 <button
                   onClick={() => setRightCollapsed(true)}

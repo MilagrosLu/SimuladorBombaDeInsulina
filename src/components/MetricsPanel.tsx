@@ -252,7 +252,7 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
       <div className="divider" />
 
       {/* ── Métricas de Desempeño (Control) ── */}
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+      {/* <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 4 }}>
         Desempeño de Control
       </div>
@@ -282,9 +282,9 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           value={state.systemState === 'stable' ? state.metrics.steadyStateError.toFixed(1) : '--'}
           unit="mg/dL"
         />
-      </div>
+      </div> */}
 
-      <div className="divider" />
+      {/* <div className="divider" /> */}
 
       {/* ── Estado del sistema ── */}
       <div style={{ textAlign: 'center', padding: '6px 0' }}>

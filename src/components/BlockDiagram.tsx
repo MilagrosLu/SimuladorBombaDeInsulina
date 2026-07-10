@@ -102,7 +102,7 @@ export function BlockDiagram({ state, running }: BlockDiagramProps) {
 
         {/* Entrada / Setpoint */}
         <Block
-          icon="🎯"
+          icon=""
           label="Setpoint"
           value={`${state.setpoint} mg/dL`}
           color="var(--cyan)"
@@ -127,7 +127,7 @@ export function BlockDiagram({ state, running }: BlockDiagramProps) {
 
         {/* Controlador PID */}
         <Block
-          icon="⚙️"
+          icon=""
           label="PID"
           value={`u=${state.pidOutput.toFixed(2)}`}
           color="var(--blue)"
@@ -138,7 +138,7 @@ export function BlockDiagram({ state, running }: BlockDiagramProps) {
 
         {/* Actuador */}
         <Block
-          icon="⚡"
+          icon=""
           label="Actuador"
           value={`${state.insulinRate.toFixed(2)} U/h`}
           color="var(--purple)"
@@ -149,7 +149,7 @@ export function BlockDiagram({ state, running }: BlockDiagramProps) {
 
         {/* Planta */}
         <Block
-          icon="🧬"
+          icon=""
           label="Planta"
           value={`SubQ: ${state.subcutaneousInsulin.toFixed(3)}`}
           color="var(--orange)"
@@ -160,7 +160,7 @@ export function BlockDiagram({ state, running }: BlockDiagramProps) {
 
         {/* Sensor */}
         <Block
-          icon="📡"
+          icon=""
           label="Guardian 4"
           value={`${state.glucoseMeasured.toFixed(1)} mg/dL`}
           color="var(--green)"

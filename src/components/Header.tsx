@@ -42,7 +42,37 @@ export function Header({
     <header className="header">
       {/* ── Logo y título ── */}
       <div className="header-brand">
-        <div className="header-logo">💉</div>
+        <div className="header-logo">
+          {/* Bomba de insulina – SVG inline */}
+          <svg width="22" height="22" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Cuerpo de la bomba */}
+            <rect x="14" y="4" width="26" height="42" rx="6" fill="white" opacity="0.9"/>
+            <rect x="14" y="4" width="26" height="42" rx="6" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none"/>
+            {/* Ventana reservorio */}
+            <rect x="19" y="9" width="16" height="16" rx="3" fill="rgba(0,60,120,0.35)"/>
+            {/* Nivel de insulina */}
+            <rect x="20" y="16" width="14" height="8" rx="2" fill="rgba(180,230,255,0.8)"/>
+            <circle cx="25" cy="19" r="1.5" fill="white" opacity="0.5"/>
+            {/* Pantalla */}
+            <rect x="19" y="28" width="16" height="11" rx="2" fill="rgba(0,20,50,0.6)"/>
+            {/* Onda de glucosa en pantalla */}
+            <polyline
+              points="20,34 22,34 23.5,31 25,36 26.5,31 28,34.5 29.5,34 34,34"
+              stroke="#22d3a6" strokeWidth="1.3" fill="none"
+              strokeLinecap="round" strokeLinejoin="round"
+            />
+            {/* Botón lateral */}
+            <rect x="40" y="18" width="6" height="10" rx="3" fill="rgba(255,255,255,0.7)"/>
+            {/* Conector inferior */}
+            <rect x="23" y="46" width="8" height="4" rx="2" fill="rgba(255,255,255,0.6)"/>
+            {/* Tubo */}
+            <path d="M27 50 Q27 56 32 56 L46 56"
+              stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+            {/* Punta cánula */}
+            <circle cx="46" cy="56" r="3" fill="rgba(255,255,255,0.8)"/>
+            <circle cx="46" cy="56" r="1.2" fill="rgba(0,150,200,0.8)"/>
+          </svg>
+        </div>
         <div>
           <div className="header-title">Medtronic MiniMed™ 780G</div>
           <div className="header-subtitle">Simulador de Control PID — Sistema de Lazo Cerrado</div>

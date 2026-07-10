@@ -95,48 +95,48 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
     section: string;
   }> = [
       {
-        type: 'meal_small', icon: '🥗',
+        type: 'meal_small', icon: '',
         label: 'Comida Pequeña', sublabel: '20g CHO · pico moderado',
         color: '#f59e0b', section: 'Comidas',
       },
       {
-        type: 'meal_normal', icon: '🍽️',
+        type: 'meal_normal', icon: ' ',
         label: 'Comida Normal', sublabel: '50g CHO · pico pronunciado',
         color: '#f97316', section: 'Comidas',
       },
       {
-        type: 'meal_large', icon: '🍔',
+        type: 'meal_large', icon: '',
         label: 'Comida Grande', sublabel: '100g CHO · perturbación máxima',
         color: '#ef4444', section: 'Comidas',
       },
       {
-        type: 'stress', icon: '😰',
+        type: 'stress', icon: ' ',
         label: 'Estrés Agudo', sublabel: 'Cortisol → glucosa sube lentamente',
         color: '#a78bfa', section: 'Fisiología',
       },
       {
-        type: 'exercise', icon: '🏃',
+        type: 'exercise', icon: ' ',
         label: 'Ejercicio', sublabel: 'Consumo muscular → baja glucosa',
         color: '#22d3a6', section: 'Fisiología',
       },
       {
-        type: 'occlusion', icon: '🚫',
+        type: 'occlusion', icon: ' ',
         label: 'Oclusión de Cánula', sublabel: 'Insulina bloqueada · insulina inyectada = 0',
-        color: '#dc2626', section: 'Fallos',
+        color: '#dc2626', section: 'Comunicación',
       },
       {
-        type: 'ble_interference', icon: '📵',
+        type: 'ble_interference', icon: ' ',
         label: 'Interferencia BLE', sublabel: 'Pérdida de comunicación con sensor',
-        color: '#6366f1', section: 'Fallos',
+        color: '#6366f1', section: 'Comunicación',
       },
       {
-        type: 'sensor_noise', icon: '📉',
+        type: 'sensor_noise', icon: ' ',
         label: 'Ruido del Sensor', sublabel: 'Medición errática → término D oscila',
-        color: '#64748b', section: 'Fallos',
+        color: '#64748b', section: 'Comunicación',
       },
     ];
 
-  const sections = ['Comidas', 'Fisiología', 'Fallos'];
+  const sections = ['Comidas', 'Fisiología', 'Comunicación'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -153,7 +153,7 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
               fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '0.08em', color: sectionColor, marginBottom: 8,
             }}>
-              {section === 'Comidas' ? '🍴' : section === 'Fisiología' ? '🧬' : '⚠️'} {section}
+              {section === 'Comidas' ? ' ' : section === 'Fisiología' ? ' ' : ' '} {section}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {sectionBtns.map(b => {
