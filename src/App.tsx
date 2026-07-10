@@ -41,11 +41,12 @@ const EMPTY_CONFIG: SimConfig = {
   basalRate: 0.8, sensorNoiseLevel: 8, sensorUpdateInterval: 5, timeScale: 1,
 };
 
+
+
+
 export default function App() {
   const [config, setConfig]     = useState<SimConfig>(EMPTY_CONFIG);
   const [, setConfigReady] = useState(false);
-  // simState empieza con valores neutros; el primer mensaje 'update' del backend
-  // lo sobreescribe con datos reales. Esto evita null checks en toda la UI.
   const [simState, setSimState] = useState<SimulationState>({
     time: 0, setpoint: 100, glucoseReal: 180, glucoseMeasured: 180, glucosePredicted: 180,
     error: 80, pTerm: 0, iTerm: 0, dTerm: 0, pidOutput: 0,
@@ -61,7 +62,6 @@ export default function App() {
     alarms: [],
     metrics: { iae: 0, ise: 0, itae: 0, maxError: 80, overshoot: 0, timeInRange: 0, timeOutOfRange: 0, steadyStateError: 80, settlingTime: null, riseTime: null, recoveryTime: null },
   });
-  // Solo se guarda la ventana actual visible (80 puntos procesados en el backend)
   const [history, setHistory]   = useState<DataPoint[]>([]);
   const [bolusEvents, setBolusEvents] = useState<BolusEvent[]>([]);
   const [totalBuffered, setTotalBuffered] = useState(0);
@@ -71,6 +71,11 @@ export default function App() {
   const [viewOffset, setViewOffset] = useState(0);
   const [connected, setConnected] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
+
+  // ── Panel collapse state ─────────────────────────────────────
+  const [leftCollapsed,    setLeftCollapsed]    = useState(false);
+  const [rightCollapsed,   setRightCollapsed]   = useState(false);
+  const [diagramCollapsed, setDiagramCollapsed] = useState(false);
 
   // Aplicar/quitar clase 'light' en el elemento :root
   useEffect(() => {
@@ -92,14 +97,10 @@ export default function App() {
     fetch(CONFIG_URL)
       .then(r => r.json())
       .then((backendCfg: any) => {
-        // El backend envía el JSON en camelCase gracias a los json tags en Go,
-        // por lo que coincide exactamente con la interfaz SimConfig.
         setConfig(backendCfg as SimConfig);
         setConfigReady(true);
       })
       .catch(() => {
-        // Si falla (backend no levantó todavía), usar valores de EMPTY_CONFIG
-        // y marcar igualmente como listo para no bloquear la UI.
         setConfigReady(true);
       });
   }, []);
@@ -141,13 +142,11 @@ export default function App() {
         };
 
         if (msg.type === 'update') {
-          // El backend manda a tasa fija (250ms) la info procesada
           setSimState(msg.payload.state);
           setHistory(msg.payload.points);
           setTotalBuffered(msg.payload.totalBuffered);
           if (msg.payload.bolusEvents) setBolusEvents(msg.payload.bolusEvents);
 
-          // Si hay falla mortal, detener la simulación
           if (msg.payload.state.systemFailure) {
             setRunning(false);
             ws.send(JSON.stringify({ type: 'pause' }));
@@ -236,42 +235,96 @@ export default function App() {
       />
 
       <div className="app-body">
-        <div className="col-left">
-          <div className="panel-header">
-            <span style={{ color: 'var(--cyan)' }}>📊</span>
-            <span className="panel-header-title">Estado del Sistema</span>
-          </div>
-          <div className="col-scroll" style={{ flex: '0 0 auto', maxHeight: '45%' }}>
-            <MetricsPanel state={simState} />
-          </div>
 
-          <div className="panel-header" style={{ borderTop: '1px solid var(--border)' }}>
-            <span style={{ color: 'var(--blue)' }}>🎛️</span>
-            <span className="panel-header-title">Parámetros</span>
-          </div>
-          <div className="col-scroll">
-            <ControlsPanel config={config} onConfigChange={handleConfigChange} />
-          </div>
+        {/* ── COLUMNA IZQUIERDA ─────────────────────────── */}
+        <div className={`col-left ${leftCollapsed ? 'col-collapsed' : ''}`}>
+          {leftCollapsed ? (
+            /* Strip vertical cuando está colapsada – igual al de Perturbaciones */
+            <div className="col-collapsed-strip">
+              <button
+                className="strip-expand-btn"
+                onClick={() => setLeftCollapsed(false)}
+                title="Expandir panel izquierdo"
+              >
+                ▶ Estado &amp; Controles
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* ── Header con botón ocultar ── */}
+              <div className="panel-header">
+                <span style={{ color: 'var(--cyan)' }}>📊</span>
+                <span className="panel-header-title">Estado del Sistema</span>
+                <button
+                  onClick={() => setLeftCollapsed(true)}
+                  title="Ocultar panel izquierdo"
+                  style={{
+                    marginLeft: 'auto', background: 'transparent',
+                    border: '1px solid var(--border)', borderRadius: 3,
+                    color: 'var(--text-muted)', fontSize: 9,
+                    padding: '2px 6px', cursor: 'pointer',
+                    fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '0.05em', transition: 'all var(--transition)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  ◀ Ocultar
+                </button>
+              </div>
+
+              {/* ── Métricas ── */}
+              <div className="col-scroll" style={{ flex: '0 0 auto', maxHeight: '45%' }}>
+                <MetricsPanel state={simState} />
+              </div>
+
+              {/* ── Separador + header Parámetros ── */}
+              <div className="panel-header" style={{ borderTop: '1px solid var(--border)' }}>
+                <span style={{ color: 'var(--blue)' }}>🎛️</span>
+                <span className="panel-header-title">Parámetros</span>
+              </div>
+
+              {/* ── Parámetros PID ── */}
+              <div className="col-scroll">
+                <ControlsPanel config={config} onConfigChange={handleConfigChange} />
+              </div>
+            </>
+          )}
         </div>
 
+        {/* ── COLUMNA CENTRAL ───────────────────────────── */}
         <div className="col-center">
-          <div className="block-diagram-area">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ color: 'var(--blue)', fontSize: 12 }}>🔗</span>
-              <span className="panel-header-title">Panel 1 — Diagrama de Lazo Cerrado</span>
-              <span className={`badge ${simState.systemState === 'stable' ? 'badge-stable' : 'badge-transient'}`} style={{ marginLeft: 'auto' }}>
-                <span className="pulse-dot" style={{
-                  background: simState.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)',
-                  width: 6, height: 6,
-                }} />
-                {simState.systemState === 'stable'
-                  ? `Estado Estable` + (simState.lastTransientTime > 0 ? ` (último transitorio: ${simState.lastTransientTime.toFixed(1)} min)` : '')
-                  : `Estado Transitorio (${simState.transientTime.toFixed(1)} min)`}
-              </span>
-            </div>
-            <BlockDiagram state={simState} running={running} />
+
+          {/* Diagrama de lazo cerrado (colapsable) */}
+          <div className="diagram-header-bar">
+            <span style={{ color: 'var(--blue)', fontSize: 12 }}>🔗</span>
+            <span className="panel-header-title">Panel 1 — Diagrama de Lazo Cerrado</span>
+            <span
+              className={`badge ${simState.systemState === 'stable' ? 'badge-stable' : 'badge-transient'}`}
+              style={{ marginLeft: 8 }}
+            >
+              <span className="pulse-dot" style={{
+                background: simState.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)',
+                width: 6, height: 6,
+              }} />
+              {simState.systemState === 'stable'
+                ? `Estable` + (simState.lastTransientTime > 0 ? ` (último: ${simState.lastTransientTime.toFixed(1)} min)` : '')
+                : `Transitorio (${simState.transientTime.toFixed(1)} min)`}
+            </span>
+            <button
+              className="diagram-collapse-btn"
+              onClick={() => setDiagramCollapsed(d => !d)}
+            >
+              {diagramCollapsed ? '▼ Mostrar diagrama' : '▲ Ocultar diagrama'}
+            </button>
           </div>
 
+          <div className={`block-diagram-area ${diagramCollapsed ? 'diagram-collapsed' : ''}`}>
+            <div className="block-diagram-area-inner">
+              <BlockDiagram state={simState} running={running} />
+            </div>
+          </div>
+
+          {/* Gráficos – siempre visibles, ocupan el espacio restante */}
           <div className="charts-unified">
             <UnifiedChart
               data={history}
@@ -287,18 +340,49 @@ export default function App() {
           </div>
         </div>
 
-        <div className="col-right">
-          <div className="panel-header">
-            <span style={{ color: 'var(--yellow)' }}>⚡</span>
-            <span className="panel-header-title">Perturbaciones</span>
-          </div>
-          <div className="col-scroll">
-            <PerturbationsPanel
-              onPerturbation={handlePerturbation}
-              activePerturbations={simState.perturbations}
-            />
-          </div>
+        {/* ── COLUMNA DERECHA ───────────────────────────── */}
+        <div className={`col-right ${rightCollapsed ? 'col-collapsed' : ''}`}>
+          {rightCollapsed ? (
+            <div className="col-collapsed-strip">
+              <button
+                className="strip-expand-btn"
+                onClick={() => setRightCollapsed(false)}
+                title="Expandir panel de perturbaciones"
+              >
+                ◀ Perturbaciones
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Botón para colapsar la columna */}
+              <div className="panel-header">
+                <span style={{ color: 'var(--yellow)' }}>⚡</span>
+                <span className="panel-header-title">Perturbaciones</span>
+                <button
+                  onClick={() => setRightCollapsed(true)}
+                  title="Ocultar panel de perturbaciones"
+                  style={{
+                    marginLeft: 'auto', background: 'transparent',
+                    border: '1px solid var(--border)', borderRadius: 3,
+                    color: 'var(--text-muted)', fontSize: 9,
+                    padding: '2px 6px', cursor: 'pointer',
+                    fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '0.05em', transition: 'all var(--transition)',
+                  }}
+                >
+                  ▶ Ocultar
+                </button>
+              </div>
+              <div className="col-scroll">
+                <PerturbationsPanel
+                  onPerturbation={handlePerturbation}
+                  activePerturbations={simState.perturbations}
+                />
+              </div>
+            </>
+          )}
         </div>
+
       </div>
     </div>
   );

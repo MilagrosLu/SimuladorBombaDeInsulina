@@ -114,10 +114,24 @@
 
 /* ── Transición suave al cambiar de tema ───── */
 body, .header, .col-left, .col-right, .col-center,
-.card, .metric-item, .panel-header, .block-diagram-area {
+.card, .metric-item, .panel-header, .block-diagram-area,
+.collapsible-toggle, .diagram-header-bar {
   transition: background-color var(--transition-slow),
               border-color var(--transition-slow),
               color var(--transition-slow);
+}
+
+/* ── Collapsible body inside flex column needs flex sizing ── */
+.collapsible-body.has-scroll {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.collapsible-body.has-scroll.is-closed {
+  padding: 0;
+  display: none;
 }
 
 /* ── Botón toggle de tema ───────────────────── */
