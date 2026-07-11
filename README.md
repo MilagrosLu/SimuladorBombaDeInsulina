@@ -6,7 +6,7 @@ Este proyecto es un simulador interactivo de control de lazo cerrado  basado en 
 ## Proyecto Ya desplegado
 Link al simulador ya desplegado para usar: https://simulador-bomba-de-insulina.vercel.app/
 
-**Solo puede abirrse en una pestaña, no está pensado para multiple usuarios**
+**Solo puede abirse en una pestaña, no está pensado para multiple usuarios**
 ## Para correrlo local
 
 ### Herramientas a instalar
