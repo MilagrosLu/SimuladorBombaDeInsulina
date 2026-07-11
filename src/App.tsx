@@ -253,20 +253,7 @@ export default function App() {
 
   return (
     <div className="app-root">
-      {!connected && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-          background: 'rgba(220,38,38,0.92)', color: '#fff',
-          padding: '6px 16px', fontSize: 12, fontWeight: 700,
-          display: 'flex', alignItems: 'center', gap: 10,
-          backdropFilter: 'blur(6px)',
-        }}>
-          ⚠️ Desconectado del backend Go. Ejecutá: 
-          <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 8px', borderRadius: 4 }}>
-            cd backend && ~/go/bin/go run .
-          </code>
-        </div>
-      )}
+
 
       <Header
         state={simState}
