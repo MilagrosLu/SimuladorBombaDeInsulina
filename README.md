@@ -3,8 +3,12 @@
 Este proyecto es un simulador interactivo de control de lazo cerrado  basado en la bomba de insulina Medtronic MiniMed™ 780G. Implementa un **Controlador PID** en un entorno web con un frontend en **React (Vite)** y un motor de simulación matemático en el backend usando **Go**.
 
 ---
+### Proyecto Ya desplegado
+Link al simulador ya desplegado para usar: https://simulador-bomba-de-insulina.vercel.app/
 
-## 🛠️ Requisitos Previos
+### Para correrlo local
+
+## Herramientas a instalar
 
 Para poder correr este proyecto desde cero se deben instalar dos herramientas fundamentales:
 
