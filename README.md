@@ -67,7 +67,7 @@ go mod tidy
 En la terminal que abriste en la carpeta `backend/`, ejecuta:
 ```bash
 go run .
-``
+```
 
 #### 2. Iniciar el Frontend (Interfaz de Usuario)
 En la terminal que tienes en la **raíz del proyecto**, ejecuta:
