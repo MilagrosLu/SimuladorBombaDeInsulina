@@ -453,7 +453,6 @@ export default function App() {
             totalSteps={TUTORIAL_STEPS.length}
             onNext={handleTutorialNext}
             onPrev={handleTutorialPrev}
-            onSkip={handleTutorialNext}
             onExit={handleTutorialExit}
           />
         </Suspense>

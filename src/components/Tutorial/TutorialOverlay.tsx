@@ -50,13 +50,12 @@ interface Props {
   totalSteps: number;
   onNext: () => void;
   onPrev: () => void;
-  onSkip: () => void;
   onExit: () => void;
 }
 
 // ── Componente principal ─────────────────────────────────────
 export const TutorialOverlay = memo(function TutorialOverlay({
-  step, stepIndex, totalSteps, onNext, onPrev, onSkip, onExit,
+  step, stepIndex, totalSteps, onNext, onPrev, onExit,
 }: Props) {
   const [rect, setRect] = useState<Rect | null>(null);
   const rafRef = useRef<number>(0);
