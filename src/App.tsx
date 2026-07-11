@@ -80,7 +80,7 @@ export default function App() {
   const [running, setRunning]   = useState(false);
   const [timeScale, setTimeScale] = useState(1);
   const [viewOffset, setViewOffset] = useState(0);
-  const [connected, setConnected] = useState(false);
+
   const [darkMode, setDarkMode]   = useState(false);
   // ── Panel collapse state ─────────────────────────────────────
   const [leftCollapsed,    setLeftCollapsed]    = useState(false);
@@ -168,12 +168,10 @@ export default function App() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setConnected(true);
         ws.send(JSON.stringify({ type: 'config', payload: configRef.current }));
       };
 
       ws.onclose = () => {
-        setConnected(false);
         setRunning(false);
         reconnect = setTimeout(connect, 2000);
       };

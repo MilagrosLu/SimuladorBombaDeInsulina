@@ -1,7 +1,6 @@
 // ============================================================
 // HEADER – Barra superior con estado en tiempo real
 // ============================================================
-import { useState, useEffect } from 'react';
 import './Header.css';
 import type { SimulationState, SimConfig } from '../types/simulation';
 
@@ -38,15 +37,6 @@ export function Header({
 }: HeaderProps) {
   const stateLabel = state.systemState === 'stable' ? 'ESTABLE' : 'TRANSITORIO';
   const stateColor = state.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)';
-
-  const [localTimeInput, setLocalTimeInput] = useState((timeScale * 5).toString());
-
-  useEffect(() => {
-    const expected = timeScale * 5;
-    if (parseFloat(localTimeInput) !== expected && localTimeInput !== '') {
-      setLocalTimeInput(expected.toString());
-    }
-  }, [timeScale]);
 
   return (
     <header className="header">
@@ -176,15 +166,12 @@ export function Header({
               min={1}
               max={5000}
               step={5}
-              value={localTimeInput}
+              value={timeScale * 5}
               onChange={e => {
-                const val = e.target.value;
-                setLocalTimeInput(val);
-                const parsed = parseFloat(val);
-                if (!isNaN(parsed)) {
-                  const mins = Math.max(0.5, Math.min(5000, parsed));
-                  onTimeScaleChange(mins / 5);
-                }
+                // El usuario ingresa los minutos simulados por segundo real.
+                // Como cada tick base procesa 5 min, el multiplicador es minutos / 5.
+                const mins = Math.max(0.5, Math.min(5000, parseFloat(e.target.value) || 5));
+                onTimeScaleChange(mins / 5);
               }}
               title="Minutos simulados por cada segundo real"
               style={{
