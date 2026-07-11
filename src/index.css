@@ -36,6 +36,7 @@
   --red:     #f43f5e;
   --purple:  #a78bfa;
   --orange:  #fb923c;
+  --failure-desc: #fca5a5;
 
   /* ── Glucosa ─────────────────────────────── */
   --glucose-ok:   #22d3a6;
@@ -95,6 +96,7 @@
   --red:     #dc2626;
   --purple:  #7c3aed;
   --orange:  #ea580c;
+  --failure-desc: #7f1d1d;
 
   --glucose-ok:   #059669;
   --glucose-warn: #d97706;

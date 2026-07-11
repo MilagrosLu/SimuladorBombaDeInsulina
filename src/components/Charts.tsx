@@ -418,8 +418,8 @@ export const UnifiedChart = memo(function UnifiedChart({ data, setpoint, totalBu
       </div>
 
       {/* Navegación manual de scroll al pasado */}
-      <div style={{ padding: '8px 12px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', transition: 'background 0.4s ease' }}>
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Navegar historial (Backend):</span>
+      <div id="tut-history-slider" style={{ padding: '8px 12px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', transition: 'background 0.4s ease' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Navegar historial :</span>
         <input
           type="range"
           min={0}

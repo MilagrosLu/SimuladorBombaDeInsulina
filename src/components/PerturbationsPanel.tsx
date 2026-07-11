@@ -171,7 +171,7 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
                     />
                     {/* Control de duración solo para fallos técnicos */}
                     {isConfigurable && (
-                      <div style={{
+                      <div id={`tut-pert-durations-${b.type}`} style={{
                         marginTop: 4, paddingLeft: 8,
                         display: 'flex', flexDirection: 'column', gap: 6,
                       }}>
@@ -198,7 +198,7 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
 
                         {/* Slider extra de Magnitud solo para ruido del sensor */}
                         {b.type === 'sensor_noise' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div id="tut-pert-noise" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 9, color: 'var(--text-muted)', minWidth: 45 }}>
                               Magnitud:
                             </span>
@@ -229,14 +229,14 @@ export function PerturbationsPanel({ onPerturbation, activePerturbations }: Pert
         );
       })}
 
-      <div style={{
+      {/* <div style={{
         padding: 10, background: 'var(--bg-input)', borderRadius: 6,
         border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6,
         marginTop: 4,
       }}>
         💡 Las perturbaciones de <strong style={{ color: 'var(--yellow)' }}>comida</strong> y <strong style={{ color: 'var(--green)' }}>fisiología</strong> tienen duración fija.
         Las de <strong style={{ color: 'var(--red)' }}>fallos técnicos</strong> permiten configurar la duración.
-      </div>
+      </div> */}
     </div>
   );
 }

@@ -89,7 +89,7 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--red)', letterSpacing: '0.05em', marginBottom: 4 }}>
             ⛔ FALLA DEL SISTEMA
           </div>
-          <div style={{ fontSize: 10, color: '#fca5a5', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10, color: 'var(--failure-desc)', lineHeight: 1.5, fontWeight: 500 }}>
             {state.failureReason}
           </div>
           {state.hypoTime > 0 && (
@@ -140,22 +140,23 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
       )}
 
       {/* ── Glucosa principal ── */}
-      <div style={{ textAlign: 'center', padding: '8px 0' }}>
+      <div id="tut-glucose-display" style={{ textAlign: 'center', padding: '8px 0' }}>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase',
           letterSpacing: '0.08em', marginBottom: 4 }}>Glucosa en Sangre</div>
         <span className="value-display" style={{ color: glucoseColor }}>
           {state.glucoseReal.toFixed(1)}
         </span>
         <span className="value-unit">mg/dL</span>
+        <div style={{ marginTop: 8 }}>
+          {/* ── Barra de glucosa ── */}
+          <GlucoseBar value={state.glucoseReal} setpoint={state.setpoint} />
+        </div>
       </div>
-
-      {/* ── Barra de glucosa ── */}
-      <GlucoseBar value={state.glucoseReal} setpoint={state.setpoint} />
 
       <div className="divider" />
 
       {/* ── Métricas del lazo ── */}
-      <div className="metrics-grid" style={{ gridTemplateColumns: '1fr' }}>
+      <div id="tut-loop-metrics" className="metrics-grid" style={{ gridTemplateColumns: '1fr' }}>
         <MetricRow
           label="Glucosa Medida (Sensor)"
           value={state.glucoseMeasured.toFixed(1)}
@@ -213,7 +214,6 @@ export function MetricsPanel({ state }: MetricsPanelProps) {
         <MetricRow label="Bolo Automático" value={state.bolusAmount.toFixed(2)} unit="U" color="var(--yellow)" />
       </div> */}
 
-      <div className="divider" />
 
       {/* ── Sensor y BLE ── */}
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',

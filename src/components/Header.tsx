@@ -126,14 +126,14 @@ export function Header({
         </div>
       </div>
 
-      {/* ── Alarmas ── */}
+      {/* ── Alarmas ──
       {state.alarms.length > 0 && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {state.alarms.map(a => (
             <span key={a} className="alarm-chip">⚠ {a}</span>
           ))}
         </div>
-      )}
+      )} */}
 
       {/* ── Tiempo simulado ── */}
       <div className="time-display">
@@ -141,7 +141,7 @@ export function Header({
       </div>
 
       {/* ── Velocidad + relación tiempo real/simulado ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+      <div id="tut-speed-controls" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
 
         {/* Botones rápidos */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

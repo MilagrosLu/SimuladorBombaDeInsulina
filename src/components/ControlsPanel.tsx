@@ -107,19 +107,21 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
           letterSpacing: '0.08em', color: 'var(--cyan)', marginBottom: 10 }}>
           Entrada – Referencia
         </div>
-        <Slider
-          id="setpoint"
-          label="Setpoint (Glucosa objetivo)"
-          value={config.setpoint}
-          min={70}
-          max={180}
-          step={1}
-          onChange={v => onConfigChange({ ...config, setpoint: v })}
-          color="var(--cyan)"
-          description="Glucosa de referencia que el sistema intenta mantener"
-        />
+        <div id="tut-setpoint-wrapper">
+          <Slider
+            id="setpoint"
+            label="Setpoint (Glucosa objetivo)"
+            value={config.setpoint}
+            min={70}
+            max={180}
+            step={1}
+            onChange={v => onConfigChange({ ...config, setpoint: v })}
+            color="var(--cyan)"
+            description="Glucosa de referencia que el sistema intenta mantener"
+          />
+        </div>
 
-        <div style={{ marginTop: 10 }}>
+        <div id="tut-initial-glucose-wrapper" style={{ marginTop: 10 }}>
           <Slider
             id="initialGlucose"
             label="Glucosa inicial (al hacer Reset)"
@@ -131,23 +133,23 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
             color="var(--yellow)"
             description="Nivel de glucosa con el que arranca la simulación al presionar Reset. Si es igual al Setpoint, el error inicial es 0."
           />
-        </div>
 
-        {/* Indicador de error inicial */}
-        {(() => {
-          const initErr = config.initialGlucose - config.setpoint;
-          const color = initErr === 0 ? 'var(--green)' : Math.abs(initErr) < 20 ? 'var(--yellow)' : 'var(--red)';
-          return (
-            <div style={{ marginTop: 6, padding: '5px 8px', background: 'var(--bg-input)',
-              borderRadius: 6, border: `1px solid ${color}33`, fontSize: 10,
-              color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Error inicial e(0)</span>
-              <span style={{ fontWeight: 700, color, fontFamily: 'monospace' }}>
-                {initErr > 0 ? '+' : ''}{initErr.toFixed(0)} mg/dL
-              </span>
-            </div>
-          );
-        })()}
+          {/* Indicador de error inicial */}
+          {(() => {
+            const initErr = config.initialGlucose - config.setpoint;
+            const color = initErr === 0 ? 'var(--green)' : Math.abs(initErr) < 20 ? 'var(--yellow)' : 'var(--red)';
+            return (
+              <div style={{ marginTop: 6, padding: '5px 8px', background: 'var(--bg-input)',
+                borderRadius: 6, border: `1px solid ${color}33`, fontSize: 10,
+                color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Error inicial e(0)</span>
+                <span style={{ fontWeight: 700, color, fontFamily: 'monospace' }}>
+                  {initErr > 0 ? '+' : ''}{initErr.toFixed(0)} mg/dL
+                </span>
+              </div>
+            );
+          })()}
+        </div>
       </section>
 
       <div className="divider" />
@@ -159,7 +161,7 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
           Controlador PID
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div id="tut-pid-inputs" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <NumberInput
             label="Kp — Ganancia Proporcional [U/h / (mg/dL)]"
             value={config.pid.kp}
@@ -187,7 +189,7 @@ export function ControlsPanel({ config, onConfigChange }: ControlsPanelProps) {
         </div>
 
         {/* Ayuda visual PID */}
-        <div style={{ marginTop: 10, padding: 8, background: 'var(--bg-input)', borderRadius: 6,
+        <div id="tut-pid-presets" style={{ marginTop: 10, padding: 8, background: 'var(--bg-input)', borderRadius: 6,
           border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-secondary)' }}>💡 Valores de referencia:</strong><br />
           ✅ <strong style={{ color: 'var(--green)' }}>Óptimo:</strong> Kp=1.0, Ki=0.005, Kd=8.0<br />

@@ -1,7 +1,7 @@
 // ============================================================
 // APP – FRONTEND PURO (solo visualización con Chart.js)
 // ============================================================
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import './App.css';
 
 import type { SimulationState, SimConfig, DataPoint, PerturbationType } from './types/simulation';
@@ -14,8 +14,20 @@ import { MetricsPanel } from './components/MetricsPanel';
 import { ControlsPanel } from './components/ControlsPanel';
 import { PerturbationsPanel } from './components/PerturbationsPanel';
 import { UnifiedChart } from './components/Charts';
+import { TUTORIAL_STEPS } from './components/Tutorial/tutorialSteps';
+import './components/Tutorial/tutorial.css';
 
-const WS_URL = 'ws://localhost:8080/ws';
+// Carga perezosa: el bundle del tutorial solo se descarga cuando se usa
+const TutorialOverlay = lazy(() =>
+  import('./components/Tutorial/TutorialOverlay').then(m => ({ default: m.TutorialOverlay }))
+);
+
+// ── Configuración de URLs para Producción ──
+const IS_PROD = import.meta.env.PROD;
+const BACKEND_DOMAIN = import.meta.env.VITE_BACKEND_DOMAIN || 'localhost:8080';
+
+const WS_URL = IS_PROD ? `wss://${BACKEND_DOMAIN}/ws` : `ws://${BACKEND_DOMAIN}/ws`;
+const CONFIG_URL = IS_PROD ? `https://${BACKEND_DOMAIN}/config` : `http://${BACKEND_DOMAIN}/config`;
 
 const PERTURBATION_DURATIONS: Record<PerturbationType, number> = {
   meal_small: 45, meal_normal: 90, meal_large: 120,
@@ -29,7 +41,6 @@ const PERTURBATION_MAGNITUDES: Record<PerturbationType, number> = {
 };
 
 const WINDOW_POINTS = 300;
-const CONFIG_URL = 'http://localhost:8080/config';
 
 // Config vacía mientras se carga del backend
 const EMPTY_CONFIG: SimConfig = {
@@ -70,12 +81,48 @@ export default function App() {
   const [timeScale, setTimeScale] = useState(1);
   const [viewOffset, setViewOffset] = useState(0);
   const [connected, setConnected] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
-
+  const [darkMode, setDarkMode]   = useState(false);
   // ── Panel collapse state ─────────────────────────────────────
   const [leftCollapsed,    setLeftCollapsed]    = useState(false);
   const [rightCollapsed,   setRightCollapsed]   = useState(false);
   const [diagramCollapsed, setDiagramCollapsed] = useState(false);
+
+  // ── Tutorial state ───────────────────────────────────────
+  const [tutorialActive, setTutorialActive] = useState(false);
+  const [tutorialStep,   setTutorialStep]   = useState(0);
+  const runningBeforeTutRef = useRef(false);
+
+  // Auto-inicio en la primera visita
+  useEffect(() => {
+    const seen = localStorage.getItem('mimed780g_tutorial_seen');
+    if (!seen) {
+      localStorage.setItem('mimed780g_tutorial_seen', '1');
+      // Pequeño delay para que la UI termine de renderizar
+      const t = setTimeout(() => setTutorialActive(true), 800);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  function handleTutorialStart() {
+    // Pausa la simulación si está corriendo, pero NO resetea
+    runningBeforeTutRef.current = running;
+    if (running) { setRunning(false); send('pause'); }
+    setTutorialStep(0);
+    setTutorialActive(true);
+  }
+
+  function handleTutorialExit() {
+    setTutorialActive(false);
+    // La simulación queda pausada; el usuario decide cuándo reanudar
+  }
+
+  function handleTutorialNext() {
+    setTutorialStep(s => Math.min(s + 1, TUTORIAL_STEPS.length - 1));
+  }
+
+  function handleTutorialPrev() {
+    setTutorialStep(s => Math.max(s - 1, 0));
+  }
 
   // Aplicar/quitar clase 'light' en el elemento :root
   useEffect(() => {
@@ -295,32 +342,34 @@ export default function App() {
         <div className="col-center">
 
           {/* Diagrama de lazo cerrado (colapsable) */}
-          <div className="diagram-header-bar">
-            <span style={{ color: 'var(--blue)', fontSize: 12 }}></span>
-            <span className="panel-header-title">Diagrama de Lazo Cerrado</span>
-            <span
-              className={`badge ${simState.systemState === 'stable' ? 'badge-stable' : 'badge-transient'}`}
-              style={{ marginLeft: 8 }}
-            >
-              <span className="pulse-dot" style={{
-                background: simState.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)',
-                width: 6, height: 6,
-              }} />
-              {simState.systemState === 'stable'
-                ? `Estable` + (simState.lastTransientTime > 0 ? ` (último: ${simState.lastTransientTime.toFixed(1)} min)` : '')
-                : `Transitorio (${simState.transientTime.toFixed(1)} min)`}
-            </span>
-            <button
-              className="diagram-collapse-btn"
-              onClick={() => setDiagramCollapsed(d => !d)}
-            >
-              {diagramCollapsed ? '▼ Mostrar diagrama' : '▲ Ocultar diagrama'}
-            </button>
-          </div>
+          <div id="tut-block-diagram-wrapper" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <div className="diagram-header-bar">
+              <span style={{ color: 'var(--blue)', fontSize: 12 }}></span>
+              <span className="panel-header-title">Diagrama de Lazo Cerrado</span>
+              <span
+                className={`badge ${simState.systemState === 'stable' ? 'badge-stable' : 'badge-transient'}`}
+                style={{ marginLeft: 8 }}
+              >
+                <span className="pulse-dot" style={{
+                  background: simState.systemState === 'stable' ? 'var(--green)' : 'var(--yellow)',
+                  width: 6, height: 6,
+                }} />
+                {simState.systemState === 'stable'
+                  ? `Estable` + (simState.lastTransientTime > 0 ? ` (último: ${simState.lastTransientTime.toFixed(1)} min)` : '')
+                  : `Transitorio (${simState.transientTime.toFixed(1)} min)`}
+              </span>
+              <button
+                className="diagram-collapse-btn"
+                onClick={() => setDiagramCollapsed(d => !d)}
+              >
+                {diagramCollapsed ? '▼ Mostrar diagrama' : '▲ Ocultar diagrama'}
+              </button>
+            </div>
 
-          <div className={`block-diagram-area ${diagramCollapsed ? 'diagram-collapsed' : ''}`}>
-            <div className="block-diagram-area-inner">
-              <BlockDiagram state={simState} running={running} />
+            <div className={`block-diagram-area ${diagramCollapsed ? 'diagram-collapsed' : ''}`}>
+              <div className="block-diagram-area-inner">
+                <BlockDiagram state={simState} running={running} />
+              </div>
             </div>
           </div>
 
@@ -384,6 +433,32 @@ export default function App() {
         </div>
 
       </div>
+
+      {/* ── Botón flotante de Ayuda / Salir del tutorial ── */}
+      <button
+        className={`tut-help-fab ${tutorialActive ? 'is-active' : ''}`}
+        onClick={tutorialActive ? handleTutorialExit : handleTutorialStart}
+        title={tutorialActive ? 'Salir del tutorial' : 'Iniciar tour guiado'}
+      >
+        <span className="fab-icon">{tutorialActive ? '✕' : '?'}</span>
+        {tutorialActive ? 'Salir del tutorial' : 'Ayuda'}
+      </button>
+
+      {/* ── Overlay del tutorial (solo se monta cuando está activo) ── */}
+      {tutorialActive && (
+        <Suspense fallback={null}>
+          <TutorialOverlay
+            step={TUTORIAL_STEPS[tutorialStep]}
+            stepIndex={tutorialStep}
+            totalSteps={TUTORIAL_STEPS.length}
+            onNext={handleTutorialNext}
+            onPrev={handleTutorialPrev}
+            onSkip={handleTutorialNext}
+            onExit={handleTutorialExit}
+          />
+        </Suspense>
+      )}
+
     </div>
   );
 }
